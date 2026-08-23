@@ -6,8 +6,9 @@ from PIL import Image
 import random
 
 # ============================================================
-# V10.0 STEP 10A
+# V10.0 STEP 10A 修正版
 # 01～08 貼圖文字 + 隨機用語池
+# 修正：隨機填入後，手動修改其中一格不會清掉其他 7 格
 # ============================================================
 
 st.set_page_config(
@@ -19,10 +20,6 @@ st.set_page_config(
 client = OpenAI(
     api_key=st.secrets["OPENAI_API_KEY"]
 )
-
-# ------------------------------------------------------------
-# 預設資料
-# ------------------------------------------------------------
 
 POPULAR_STYLES = [
     "↓ 請選擇風格",
@@ -49,8 +46,6 @@ CHARACTER_OPTIONS = [
     "柔和光影",
 ]
 
-# 這是 STEP 10A 的基本隨機用語池。
-# 後續可以直接替換/擴充成使用者自己的完整常用語資料。
 COMMON_PHRASES = [
     "早安", "晚安", "午安", "嗨", "哈囉",
     "加油", "辛苦了", "謝謝", "感謝", "不客氣",
@@ -88,13 +83,30 @@ if "generated_image_bytes" not in st.session_state:
 if "last_prompt" not in st.session_state:
     st.session_state.last_prompt = ""
 
-if "sticker_texts" not in st.session_state:
-    st.session_state.sticker_texts = [""] * 8
+# 01～08 的真正單一資料來源：
+# widget key 本身就是每一格的儲存位置。
+for i in range(8):
+    key = f"sticker_text_{i}"
+    if key not in st.session_state:
+        st.session_state[key] = ""
 
 
-# ------------------------------------------------------------
-# Prompt 組合器
-# ------------------------------------------------------------
+def get_sticker_texts():
+    """永遠從 8 個 widget state 取得目前文字。"""
+    return [
+        st.session_state.get(f"sticker_text_{i}", "")
+        for i in range(8)
+    ]
+
+
+def set_sticker_texts(values):
+    """一次更新 01～08，並同步更新 widget state。"""
+    values = list(values)[:8]
+    values += [""] * (8 - len(values))
+
+    for i, value in enumerate(values):
+        st.session_state[f"sticker_text_{i}"] = str(value)
+
 
 def build_prompt(
     style,
@@ -104,15 +116,10 @@ def build_prompt(
     sticker_text,
     transparent_bg
 ):
-    parts = []
-
-    parts.append(
-        "請以我提供的人物照片作為主要人物參考。"
-    )
-
-    parts.append(
-        "保留人物的身份辨識特徵，避免任意改變人物核心外觀。"
-    )
+    parts = [
+        "請以我提供的人物照片作為主要人物參考。",
+        "保留人物的身份辨識特徵，避免任意改變人物核心外觀。",
+    ]
 
     if style and style != "↓ 請選擇風格":
         parts.append(f"主要貼圖風格：{style}。")
@@ -136,20 +143,14 @@ def build_prompt(
 
     if sticker_text.strip():
         parts.append(
-            f"貼圖文字／情緒：{sticker_text.strip()}。"
+            f"01～08 貼圖文字：\n{sticker_text.strip()}"
         )
 
-    parts.append(
-        "人物完整呈現，不要裁切頭部、臉部、身體或四肢。"
-    )
-
-    parts.append(
-        "構圖應保留足夠安全邊界，人物不要貼近畫面邊緣。"
-    )
-
-    parts.append(
-        "不要讓人物因為畫面比例而被拉伸、變形或壓縮。"
-    )
+    parts.extend([
+        "人物完整呈現，不要裁切頭部、臉部、身體或四肢。",
+        "構圖應保留足夠安全邊界，人物不要貼近畫面邊緣。",
+        "不要讓人物因為畫面比例而被拉伸、變形或壓縮。",
+    ])
 
     if transparent_bg:
         parts.append(
@@ -170,7 +171,10 @@ def build_prompt(
 # ============================================================
 
 st.title("🎨 LINE 貼圖創作工作室")
-st.caption("V10.0 Web Edition｜STEP 10A 01～08 貼圖文字＋隨機用語池")
+st.caption(
+    "V10.0 Web Edition｜STEP 10A 修正版："
+    "01～08 貼圖文字＋隨機用語池"
+)
 st.divider()
 
 
@@ -189,13 +193,11 @@ uploaded_file = st.file_uploader(
 if uploaded_file is not None:
     try:
         uploaded_file.seek(0)
-
         input_image = Image.open(uploaded_file)
         input_image.load()
 
         buffer = BytesIO()
         input_image.convert("RGBA").save(buffer, format="PNG")
-
         st.session_state.uploaded_image_bytes = buffer.getvalue()
 
         col1, col2 = st.columns([2, 1])
@@ -273,13 +275,9 @@ st.divider()
 st.header("💬 ④ 01～08 貼圖文字")
 
 st.write(
-    "每一格都是獨立內容。先完成文字設定，下一階段才會把 01～08 "
-    "真正送入一次 4×2 圖片生成。"
+    "每一格都是獨立儲存。隨機填入後，可以任意修改其中一格，"
+    "其他 7 格會完整保留。"
 )
-
-# ------------------------------------------------------------
-# 隨機用語池操作
-# ------------------------------------------------------------
 
 pool_col1, pool_col2, pool_col3 = st.columns([1, 1, 1])
 
@@ -292,11 +290,7 @@ with pool_col1:
             COMMON_PHRASES,
             k=min(8, len(COMMON_PHRASES))
         )
-
-        st.session_state.sticker_texts = choices + [""] * (
-            8 - len(choices)
-        )
-
+        set_sticker_texts(choices)
         st.rerun()
 
 with pool_col2:
@@ -304,7 +298,7 @@ with pool_col2:
         "🔄 清空 8 格",
         use_container_width=True
     ):
-        st.session_state.sticker_texts = [""] * 8
+        set_sticker_texts([""] * 8)
         st.rerun()
 
 with pool_col3:
@@ -314,37 +308,42 @@ with pool_col3:
 
 st.subheader("📝 自行輸入用語區")
 
-# 4 × 2 的輸入排列
+# ------------------------------------------------------------
+# 01～04
+# ------------------------------------------------------------
+
 row1 = st.columns(4)
 
 for i, col in enumerate(row1):
     with col:
-        st.session_state.sticker_texts[i] = st.text_input(
+        st.text_input(
             f"{i + 1:02d}",
-            value=st.session_state.sticker_texts[i],
             key=f"sticker_text_{i}",
             placeholder="輸入貼圖用語"
         )
+
+# ------------------------------------------------------------
+# 05～08
+# ------------------------------------------------------------
 
 row2 = st.columns(4)
 
 for i, col in enumerate(row2, start=4):
     with col:
-        st.session_state.sticker_texts[i] = st.text_input(
+        st.text_input(
             f"{i + 1:02d}",
-            value=st.session_state.sticker_texts[i],
             key=f"sticker_text_{i}",
             placeholder="輸入貼圖用語"
         )
 
+sticker_texts = get_sticker_texts()
+
 filled_count = sum(
-    1 for x in st.session_state.sticker_texts
+    1 for x in sticker_texts
     if x.strip()
 )
 
-st.info(
-    f"📊 已填寫 {filled_count} / 8 格"
-)
+st.info(f"📊 已填寫 {filled_count} / 8 格")
 
 
 # ============================================================
@@ -355,9 +354,7 @@ with st.expander(
     "📚 查看目前隨機用語池",
     expanded=False
 ):
-    st.write(
-        "、".join(COMMON_PHRASES)
-    )
+    st.write("、".join(COMMON_PHRASES))
 
 
 # ============================================================
@@ -370,7 +367,10 @@ st.header("🌈 ⑤ 背景設定")
 transparent_bg = st.checkbox(
     "使用透明背景 PNG",
     value=False,
-    help="STEP 10A 只負責設定文字；真正透明輸出將在後續接回 V8 系列核心。"
+    help=(
+        "STEP 10A 只負責設定文字；"
+        "真正透明輸出將在後續接回 V8 系列核心。"
+    )
 )
 
 
@@ -387,23 +387,25 @@ preview_cols = st.columns(4)
 
 for i, col in enumerate(preview_cols):
     with col:
+        text = sticker_texts[i].strip()
         st.markdown(
             f"**{i + 1:02d}**　"
-            + (st.session_state.sticker_texts[i] or "（未輸入）")
+            + (text if text else "（未輸入）")
         )
 
 preview_cols2 = st.columns(4)
 
 for i, col in enumerate(preview_cols2, start=4):
     with col:
+        text = sticker_texts[i].strip()
         st.markdown(
             f"**{i + 1:02d}**　"
-            + (st.session_state.sticker_texts[i] or "（未輸入）")
+            + (text if text else "（未輸入）")
         )
 
 all_text = "\n".join(
     f"{i + 1:02d}. {text.strip()}"
-    for i, text in enumerate(st.session_state.sticker_texts)
+    for i, text in enumerate(sticker_texts)
     if text.strip()
 )
 
@@ -438,6 +440,6 @@ if st.button(
     )
 
 st.caption(
-    "V10.0 Web Edition｜STEP 10A："
+    "V10.0 Web Edition｜STEP 10A 修正版："
     "01～08 貼圖文字＋隨機用語池"
 )
