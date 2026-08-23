@@ -1,11 +1,12 @@
 import streamlit as st
 from openai import OpenAI
+import base64
+from io import BytesIO
+from PIL import Image
 
-client = OpenAI(
-    api_key=st.secrets["OPENAI_API_KEY"]
-)
-
-st.success("🔐 OpenAI API Key 已成功載入！")
+# =========================
+# 基本設定
+# =========================
 
 st.set_page_config(
     page_title="LINE 貼圖創作工作室",
@@ -13,36 +14,75 @@ st.set_page_config(
     layout="wide"
 )
 
+# =========================
+# OpenAI
+# =========================
+
+client = OpenAI(
+    api_key=st.secrets["OPENAI_API_KEY"]
+)
+
+# =========================
+# 網頁
+# =========================
+
 st.title("🎨 LINE 貼圖創作工作室")
 
-st.write(
-    "歡迎來到 LINE 貼圖 Web 版！"
-)
-
-st.info(
-    "目前是 V10.0 Web 測試版。"
-)
-
-st.success(
-    "✅ Streamlit 網頁成功啟動！"
-)
+st.caption("V10.0 Web Edition｜AI 圖片生成測試")
 
 st.divider()
 
-st.subheader("🚀 下一步")
-
-st.write(
-    "接下來我們會逐步加入："
+prompt = st.text_area(
+    "✏️ 請輸入你想生成的貼圖",
+    value="Q版可愛人物，開心揮手，LINE貼圖風格，透明背景",
+    height=120
 )
 
-st.write("① AI 貼圖生成")
-st.write("② 透明背景 PNG")
-st.write("③ 4×2 貼圖裁切")
-st.write("④ 手動調整裁切位置")
-st.write("⑤ main.png / tab.png")
-st.write("⑥ 125 種文字效果")
-st.write("⑦ 使用者自定風格")
-
-st.caption(
-    "V10.0 Web Edition｜核心基於 V8.6.4"
+generate = st.button(
+    "✨ 生成圖片",
+    type="primary"
 )
+
+# =========================
+# AI 圖片生成
+# =========================
+
+if generate:
+
+    if not prompt.strip():
+        st.warning("請先輸入貼圖描述。")
+        st.stop()
+
+    with st.spinner("🎨 AI 正在生成圖片，請稍候……"):
+
+        try:
+
+            result = client.images.generate(
+                model="gpt-image-2",
+                prompt=prompt,
+                size="1024x1024"
+            )
+
+            image_base64 = result.data[0].b64_json
+
+            image_bytes = base64.b64decode(image_base64)
+
+            image = Image.open(
+                BytesIO(image_bytes)
+            )
+
+            st.success("🎉 圖片生成成功！")
+
+            st.image(
+                image,
+                caption="AI 生成結果",
+                use_container_width=True
+            )
+
+        except Exception as e:
+
+            st.error("❌ 圖片生成失敗")
+
+            st.code(
+                str(e)
+            )
