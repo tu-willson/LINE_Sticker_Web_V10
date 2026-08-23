@@ -206,12 +206,12 @@ if generate:
             # 將人物照片送進圖片模型
             # ------------------------------------------------
 
-            result = client.images.edit(
-                model="gpt-image-2",
-                image=image_buffer,
-                prompt=prompt,
-                size="1024x1024"
-            )
+       result = client.images.edit(
+           model="gpt-image-2",
+           image=("person.png", image_buffer, "image/png"),
+           prompt=prompt,
+           size="1024x1024"
+           )
 
 
             # ------------------------------------------------
