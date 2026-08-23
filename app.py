@@ -186,33 +186,40 @@ if generate:
             input_image.load()
 
 
-            # ------------------------------------------------
-            # 轉成 PNG
-            # ------------------------------------------------
+# ------------------------------------------------
+# 將人物照片轉成 PNG
+# ------------------------------------------------
 
-            image_buffer = BytesIO()
+uploaded_file.seek(0)
 
-            input_image.convert(
-                "RGBA"
-            ).save(
-                image_buffer,
-                format="PNG"
-            )
+input_image = Image.open(uploaded_file)
+input_image.load()
 
-            image_buffer.seek(0)
+image_buffer = BytesIO()
+
+input_image.convert("RGBA").save(
+    image_buffer,
+    format="PNG"
+)
+
+image_buffer.seek(0)
 
 
-            # ------------------------------------------------
-            # 將人物照片送進圖片模型
-            # ------------------------------------------------
+# ------------------------------------------------
+# 送入 OpenAI Image API
+# 明確指定 PNG MIME Type
+# ------------------------------------------------
 
-       result = client.images.edit(
-           model="gpt-image-2",
-           image=("person.png", image_buffer, "image/png"),
-           prompt=prompt,
-           size="1024x1024"
-           )
-
+result = client.images.edit(
+    model="gpt-image-2",
+    image=(
+        "person.png",
+        image_buffer,
+        "image/png"
+    ),
+    prompt=prompt,
+    size="1024x1024"
+)
 
             # ------------------------------------------------
             # 取得生成結果
