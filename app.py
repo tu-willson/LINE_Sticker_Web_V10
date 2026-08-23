@@ -3,10 +3,11 @@ from openai import OpenAI
 import base64
 from io import BytesIO
 from PIL import Image
+import random
 
 # ============================================================
-# V10.0 STEP 9B
-# 人物照片 + 完整風格設定 -> AI 真正生成
+# V10.0 STEP 10A
+# 01～08 貼圖文字 + 隨機用語池
 # ============================================================
 
 st.set_page_config(
@@ -48,6 +49,32 @@ CHARACTER_OPTIONS = [
     "柔和光影",
 ]
 
+# 這是 STEP 10A 的基本隨機用語池。
+# 後續可以直接替換/擴充成使用者自己的完整常用語資料。
+COMMON_PHRASES = [
+    "早安", "晚安", "午安", "嗨", "哈囉",
+    "加油", "辛苦了", "謝謝", "感謝", "不客氣",
+    "沒問題", "OK", "收到", "了解", "好喔",
+    "好的", "太好了", "讚", "超讚", "棒棒的",
+    "恭喜", "祝福你", "一起加油", "慢慢來",
+    "等等我", "馬上來", "我來了", "出發",
+    "回來了", "先這樣", "掰掰", "再見",
+    "哈哈哈", "笑死", "真的嗎", "真的假的",
+    "好開心", "好幸福", "太可愛了",
+    "我愛你", "想你", "抱抱", "親親",
+    "不要啦", "不要鬧", "傻眼", "無言",
+    "生氣", "氣死我了", "好累", "累了",
+    "忙死了", "休息一下", "我不行了",
+    "好餓", "吃飯了嗎", "等等再說",
+    "拜託", "求你了", "可以嗎", "好嗎",
+    "當然可以", "當然好", "隨便你",
+    "沒事", "沒關係", "別擔心", "放心",
+    "我懂", "我知道", "我明白",
+    "真的假的啦", "太扯了", "傻眼貓咪",
+    "救命", "完蛋了", "糟糕", "慘了",
+    "好可怕", "不要怕", "冷靜",
+]
+
 # ------------------------------------------------------------
 # Session State
 # ------------------------------------------------------------
@@ -61,13 +88,22 @@ if "generated_image_bytes" not in st.session_state:
 if "last_prompt" not in st.session_state:
     st.session_state.last_prompt = ""
 
+if "sticker_texts" not in st.session_state:
+    st.session_state.sticker_texts = [""] * 8
+
+
 # ------------------------------------------------------------
 # Prompt 組合器
 # ------------------------------------------------------------
 
-def build_prompt(style, custom_style, selected_character,
-                 custom_character, sticker_text, transparent_bg):
-
+def build_prompt(
+    style,
+    custom_style,
+    selected_character,
+    custom_character,
+    sticker_text,
+    transparent_bg
+):
     parts = []
 
     parts.append(
@@ -79,9 +115,7 @@ def build_prompt(style, custom_style, selected_character,
     )
 
     if style and style != "↓ 請選擇風格":
-        parts.append(
-            f"主要貼圖風格：{style}。"
-        )
+        parts.append(f"主要貼圖風格：{style}。")
 
     if custom_style.strip():
         parts.append(
@@ -102,7 +136,7 @@ def build_prompt(style, custom_style, selected_character,
 
     if sticker_text.strip():
         parts.append(
-            f"這張貼圖要表達的內容／情緒：{sticker_text.strip()}。"
+            f"貼圖文字／情緒：{sticker_text.strip()}。"
         )
 
     parts.append(
@@ -136,8 +170,9 @@ def build_prompt(style, custom_style, selected_character,
 # ============================================================
 
 st.title("🎨 LINE 貼圖創作工作室")
-st.caption("V10.0 Web Edition｜STEP 9B 人物＋完整設定生成")
+st.caption("V10.0 Web Edition｜STEP 10A 01～08 貼圖文字＋隨機用語池")
 st.divider()
+
 
 # ============================================================
 # ① 人物照片
@@ -152,7 +187,6 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
-
     try:
         uploaded_file.seek(0)
 
@@ -160,11 +194,7 @@ if uploaded_file is not None:
         input_image.load()
 
         buffer = BytesIO()
-
-        input_image.convert("RGBA").save(
-            buffer,
-            format="PNG"
-        )
+        input_image.convert("RGBA").save(buffer, format="PNG")
 
         st.session_state.uploaded_image_bytes = buffer.getvalue()
 
@@ -185,7 +215,6 @@ if uploaded_file is not None:
             st.write(f"模式：{input_image.mode}")
 
     except Exception as e:
-
         st.error("❌ 無法讀取人物照片")
         st.code(str(e))
 
@@ -237,166 +266,178 @@ custom_character = st.text_area(
 
 
 # ============================================================
-# ④ 貼圖內容
+# ④ 01～08 貼圖文字
 # ============================================================
 
 st.divider()
-st.header("💬 ④ 貼圖內容")
+st.header("💬 ④ 01～08 貼圖文字")
 
-sticker_text = st.text_area(
-    "這張貼圖想表達什麼？",
-    value="開心揮手",
-    height=90,
-    placeholder="例如：早安、加油、謝謝、生氣、好累……"
+st.write(
+    "每一格都是獨立內容。先完成文字設定，下一階段才會把 01～08 "
+    "真正送入一次 4×2 圖片生成。"
 )
+
+# ------------------------------------------------------------
+# 隨機用語池操作
+# ------------------------------------------------------------
+
+pool_col1, pool_col2, pool_col3 = st.columns([1, 1, 1])
+
+with pool_col1:
+    if st.button(
+        "🎲 隨機填入 8 格",
+        use_container_width=True
+    ):
+        choices = random.sample(
+            COMMON_PHRASES,
+            k=min(8, len(COMMON_PHRASES))
+        )
+
+        st.session_state.sticker_texts = choices + [""] * (
+            8 - len(choices)
+        )
+
+        st.rerun()
+
+with pool_col2:
+    if st.button(
+        "🔄 清空 8 格",
+        use_container_width=True
+    ):
+        st.session_state.sticker_texts = [""] * 8
+        st.rerun()
+
+with pool_col3:
+    st.write(
+        f"目前隨機用語池：{len(COMMON_PHRASES)} 句"
+    )
+
+st.subheader("📝 自行輸入用語區")
+
+# 4 × 2 的輸入排列
+row1 = st.columns(4)
+
+for i, col in enumerate(row1):
+    with col:
+        st.session_state.sticker_texts[i] = st.text_input(
+            f"{i + 1:02d}",
+            value=st.session_state.sticker_texts[i],
+            key=f"sticker_text_{i}",
+            placeholder="輸入貼圖用語"
+        )
+
+row2 = st.columns(4)
+
+for i, col in enumerate(row2, start=4):
+    with col:
+        st.session_state.sticker_texts[i] = st.text_input(
+            f"{i + 1:02d}",
+            value=st.session_state.sticker_texts[i],
+            key=f"sticker_text_{i}",
+            placeholder="輸入貼圖用語"
+        )
+
+filled_count = sum(
+    1 for x in st.session_state.sticker_texts
+    if x.strip()
+)
+
+st.info(
+    f"📊 已填寫 {filled_count} / 8 格"
+)
+
+
+# ============================================================
+# 隨機用語池參考
+# ============================================================
+
+with st.expander(
+    "📚 查看目前隨機用語池",
+    expanded=False
+):
+    st.write(
+        "、".join(COMMON_PHRASES)
+    )
+
+
+# ============================================================
+# ⑤ 透明背景
+# ============================================================
+
+st.divider()
+st.header("🌈 ⑤ 背景設定")
 
 transparent_bg = st.checkbox(
-    "🌈 使用透明背景 PNG",
-    value=False
+    "使用透明背景 PNG",
+    value=False,
+    help="STEP 10A 只負責設定文字；真正透明輸出將在後續接回 V8 系列核心。"
 )
 
 
 # ============================================================
-# ⑤ Prompt 預覽
+# ⑥ Prompt 預覽
 # ============================================================
+
+st.divider()
+st.header("🔍 ⑥ 目前設定預覽")
+
+st.subheader("01～08 貼圖文字")
+
+preview_cols = st.columns(4)
+
+for i, col in enumerate(preview_cols):
+    with col:
+        st.markdown(
+            f"**{i + 1:02d}**　"
+            + (st.session_state.sticker_texts[i] or "（未輸入）")
+        )
+
+preview_cols2 = st.columns(4)
+
+for i, col in enumerate(preview_cols2, start=4):
+    with col:
+        st.markdown(
+            f"**{i + 1:02d}**　"
+            + (st.session_state.sticker_texts[i] or "（未輸入）")
+        )
+
+all_text = "\n".join(
+    f"{i + 1:02d}. {text.strip()}"
+    for i, text in enumerate(st.session_state.sticker_texts)
+    if text.strip()
+)
 
 final_prompt = build_prompt(
     style,
     custom_style,
     selected_character,
     custom_character,
-    sticker_text,
+    all_text,
     transparent_bg
 )
 
-st.divider()
-st.header("🔍 ⑤ AI 實際使用的設定")
-
-with st.expander("👀 查看完整 AI Prompt", expanded=False):
+with st.expander(
+    "👀 查看目前組合後的 AI Prompt",
+    expanded=False
+):
     st.code(final_prompt, language="text")
 
 
 # ============================================================
-# ⑥ 真正生成
+# STEP 10A 測試
 # ============================================================
 
 st.divider()
-st.header("✨ ⑥ 生成貼圖")
 
-generate = st.button(
-    "✨ 使用目前設定生成圖片",
-    type="primary",
+if st.button(
+    "🧪 更新文字設定",
     use_container_width=True
-)
-
-if generate:
-
-    if st.session_state.uploaded_image_bytes is None:
-        st.warning("📷 請先上傳人物照片。")
-        st.stop()
-
-    if not final_prompt.strip():
-        st.warning("✏️ 請確認貼圖設定。")
-        st.stop()
-
-    st.session_state.last_prompt = final_prompt
-
-    with st.spinner(
-        "🎨 AI 正在參考人物照片與你的完整設定……"
-    ):
-
-        try:
-
-            # ------------------------------------------------
-            # 使用已保存的 PNG bytes
-            # 明確指定檔名與 MIME Type
-            # ------------------------------------------------
-
-            image_buffer = BytesIO(
-                st.session_state.uploaded_image_bytes
-            )
-
-            result = client.images.edit(
-                model="gpt-image-2",
-                image=(
-                    "person.png",
-                    image_buffer,
-                    "image/png"
-                ),
-                prompt=final_prompt,
-                size="1024x1024"
-            )
-
-            image_base64 = result.data[0].b64_json
-
-            image_bytes = base64.b64decode(
-                image_base64
-            )
-
-            generated_image = Image.open(
-                BytesIO(image_bytes)
-            )
-
-            output_buffer = BytesIO()
-
-            generated_image.save(
-                output_buffer,
-                format="PNG"
-            )
-
-            st.session_state.generated_image_bytes = (
-                output_buffer.getvalue()
-            )
-
-            st.success(
-                "🎉 STEP 9B 生成成功！"
-            )
-
-        except Exception as e:
-
-            st.error(
-                "❌ 人物＋完整設定生成失敗"
-            )
-
-            st.code(str(e))
-
-
-# ============================================================
-# 顯示生成結果
-# ============================================================
-
-if st.session_state.generated_image_bytes:
-
-    st.divider()
-    st.header("🖼️ 生成結果")
-
-    result_image = Image.open(
-        BytesIO(
-            st.session_state.generated_image_bytes
-        )
+):
+    st.success(
+        f"✅ 已保存目前 01～08 文字設定，共 {filled_count} 格。"
     )
-
-    st.image(
-        result_image,
-        caption="🤖 AI 生成結果",
-        use_container_width=True
-    )
-
-    with st.expander(
-        "🔍 查看本次實際送出的 Prompt"
-    ):
-        st.code(
-            st.session_state.last_prompt,
-            language="text"
-        )
-
-
-# ============================================================
-# 開發進度
-# ============================================================
-
-st.divider()
 
 st.caption(
-    "V10.0 Web Edition｜STEP 9B：人物照片＋完整設定 → AI生成"
+    "V10.0 Web Edition｜STEP 10A："
+    "01～08 貼圖文字＋隨機用語池"
 )
