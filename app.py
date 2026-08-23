@@ -3,12 +3,10 @@ from openai import OpenAI
 import base64
 from io import BytesIO
 from PIL import Image
-import random
 
 # ============================================================
-# V10.0 STEP 10A 修正版
-# 01～08 貼圖文字 + 隨機用語池
-# 修正：隨機填入後，手動修改其中一格不會清掉其他 7 格
+# V10.0 STEP 10B
+# 01～08 文字 -> AI 4×2 單張大圖生成
 # ============================================================
 
 st.set_page_config(
@@ -17,9 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-client = OpenAI(
-    api_key=st.secrets["OPENAI_API_KEY"]
-)
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 POPULAR_STYLES = [
     "↓ 請選擇風格",
@@ -46,30 +42,6 @@ CHARACTER_OPTIONS = [
     "柔和光影",
 ]
 
-COMMON_PHRASES = [
-    "早安", "晚安", "午安", "嗨", "哈囉",
-    "加油", "辛苦了", "謝謝", "感謝", "不客氣",
-    "沒問題", "OK", "收到", "了解", "好喔",
-    "好的", "太好了", "讚", "超讚", "棒棒的",
-    "恭喜", "祝福你", "一起加油", "慢慢來",
-    "等等我", "馬上來", "我來了", "出發",
-    "回來了", "先這樣", "掰掰", "再見",
-    "哈哈哈", "笑死", "真的嗎", "真的假的",
-    "好開心", "好幸福", "太可愛了",
-    "我愛你", "想你", "抱抱", "親親",
-    "不要啦", "不要鬧", "傻眼", "無言",
-    "生氣", "氣死我了", "好累", "累了",
-    "忙死了", "休息一下", "我不行了",
-    "好餓", "吃飯了嗎", "等等再說",
-    "拜託", "求你了", "可以嗎", "好嗎",
-    "當然可以", "當然好", "隨便你",
-    "沒事", "沒關係", "別擔心", "放心",
-    "我懂", "我知道", "我明白",
-    "真的假的啦", "太扯了", "傻眼貓咪",
-    "救命", "完蛋了", "糟糕", "慘了",
-    "好可怕", "不要怕", "冷靜",
-]
-
 # ------------------------------------------------------------
 # Session State
 # ------------------------------------------------------------
@@ -77,22 +49,19 @@ COMMON_PHRASES = [
 if "uploaded_image_bytes" not in st.session_state:
     st.session_state.uploaded_image_bytes = None
 
-if "generated_image_bytes" not in st.session_state:
-    st.session_state.generated_image_bytes = None
-
-if "last_prompt" not in st.session_state:
-    st.session_state.last_prompt = ""
-
-# 01～08 的真正單一資料來源：
-# widget key 本身就是每一格的儲存位置。
 for i in range(8):
     key = f"sticker_text_{i}"
     if key not in st.session_state:
         st.session_state[key] = ""
 
+if "generated_4x2_bytes" not in st.session_state:
+    st.session_state.generated_4x2_bytes = None
+
+if "last_prompt" not in st.session_state:
+    st.session_state.last_prompt = ""
+
 
 def get_sticker_texts():
-    """永遠從 8 個 widget state 取得目前文字。"""
     return [
         st.session_state.get(f"sticker_text_{i}", "")
         for i in range(8)
@@ -100,22 +69,15 @@ def get_sticker_texts():
 
 
 def set_sticker_texts(values):
-    """一次更新 01～08，並同步更新 widget state。"""
     values = list(values)[:8]
     values += [""] * (8 - len(values))
-
     for i, value in enumerate(values):
         st.session_state[f"sticker_text_{i}"] = str(value)
 
 
-def build_prompt(
-    style,
-    custom_style,
-    selected_character,
-    custom_character,
-    sticker_text,
-    transparent_bg
-):
+def build_prompt(style, custom_style, selected_character,
+                 custom_character, sticker_texts, transparent_bg):
+
     parts = [
         "請以我提供的人物照片作為主要人物參考。",
         "保留人物的身份辨識特徵，避免任意改變人物核心外觀。",
@@ -141,26 +103,78 @@ def build_prompt(
             f"使用者自定人物／場景要求：{custom_character.strip()}。"
         )
 
-    if sticker_text.strip():
-        parts.append(
-            f"01～08 貼圖文字：\n{sticker_text.strip()}"
-        )
+    # --------------------------------------------------------
+    # 01～08 固定位置規則
+    # --------------------------------------------------------
 
-    parts.extend([
-        "人物完整呈現，不要裁切頭部、臉部、身體或四肢。",
-        "構圖應保留足夠安全邊界，人物不要貼近畫面邊緣。",
-        "不要讓人物因為畫面比例而被拉伸、變形或壓縮。",
-    ])
+    parts.append(
+        "請一次生成一張 4×2 的八格 LINE 貼圖總圖。"
+    )
+
+    parts.append(
+        "必須嚴格按照以下固定位置排列，不得交換、重新排序或合併："
+    )
+
+    parts.append(
+        "第一排由左至右：01、02、03、04。"
+    )
+
+    parts.append(
+        "第二排由左至右：05、06、07、08。"
+    )
+
+    parts.append(
+        "每一格只對應一個指定編號與一個指定文字。"
+    )
+
+    parts.append(
+        "不要把不同格子的文字放到其他格子。"
+    )
+
+    parts.append(
+        "不要遺漏任何一格。"
+    )
+
+    parts.append(
+        "八格之間保持清楚、獨立的構圖區域。"
+    )
+
+    parts.append(
+        "每格人物完整呈現，不要裁切頭部、臉部、身體或四肢。"
+    )
+
+    parts.append(
+        "每格人物與該格邊界保持安全距離。"
+    )
+
+    parts.append(
+        "不要讓人物因為格子比例而被拉伸、變形或壓縮。"
+    )
+
+    parts.append(
+        "八格人物可以有不同動作、表情與姿勢，但必須維持同一人物身份與視覺風格。"
+    )
+
+    # --------------------------------------------------------
+    # 明確列出 01～08
+    # --------------------------------------------------------
+
+    for i, text in enumerate(sticker_texts):
+        label = f"{i + 1:02d}"
+        content = text.strip() or "（此格未指定文字）"
+
+        parts.append(
+            f"位置 {label}：文字「{content}」。"
+        )
 
     if transparent_bg:
         parts.append(
             "請使用透明背景 PNG。"
             "背景保持真正透明，不要使用白色、黑色或其他純色填滿背景。"
-            "人物本體完整保留。"
         )
 
     parts.append(
-        "整體要具有 LINE 貼圖的清楚、可讀、可愛與完整構圖感。"
+        "整體為 LINE 貼圖設計，畫面清楚、可讀、可愛。"
     )
 
     return "\n".join(parts)
@@ -172,11 +186,9 @@ def build_prompt(
 
 st.title("🎨 LINE 貼圖創作工作室")
 st.caption(
-    "V10.0 Web Edition｜STEP 10A 修正版："
-    "01～08 貼圖文字＋隨機用語池"
+    "V10.0 Web Edition｜STEP 10B：01～08 → 4×2 AI生成"
 )
 st.divider()
-
 
 # ============================================================
 # ① 人物照片
@@ -220,9 +232,8 @@ if uploaded_file is not None:
         st.error("❌ 無法讀取人物照片")
         st.code(str(e))
 
-
 # ============================================================
-# ② 貼圖風格
+# ② 風格
 # ============================================================
 
 st.divider()
@@ -236,16 +247,12 @@ style = st.selectbox(
 
 custom_style = st.text_area(
     "⭐ 我的自定風格",
-    placeholder=(
-        "例如：Q版黏土3D、木雕玩具質感、"
-        "手工微縮場景、霧面材質、溫暖療癒氛圍……"
-    ),
-    height=110
+    placeholder="例如：Q版黏土3D、木雕玩具質感、手工微縮場景、霧面材質……",
+    height=100
 )
 
-
 # ============================================================
-# ③ 人物與畫面特色
+# ③ 人物特色
 # ============================================================
 
 st.divider()
@@ -259,58 +266,21 @@ selected_character = st.multiselect(
 
 custom_character = st.text_area(
     "📝 自定義人物／場景需求",
-    placeholder=(
-        "例如：保留原本髮型與服裝配件；"
-        "人物四肢完整；人物與畫面邊緣保持安全距離。"
-    ),
-    height=150
+    placeholder="例如：保留髮型、服裝與配件；人物四肢完整；每格保留安全邊界。",
+    height=130
 )
 
-
 # ============================================================
-# ④ 01～08 貼圖文字
+# ④ 01～08
 # ============================================================
 
 st.divider()
 st.header("💬 ④ 01～08 貼圖文字")
 
 st.write(
-    "每一格都是獨立儲存。隨機填入後，可以任意修改其中一格，"
-    "其他 7 格會完整保留。"
+    "這裡的 01～08 是固定位置。"
+    "AI 生成時會明確要求第一排 01～04、第二排 05～08。"
 )
-
-pool_col1, pool_col2, pool_col3 = st.columns([1, 1, 1])
-
-with pool_col1:
-    if st.button(
-        "🎲 隨機填入 8 格",
-        use_container_width=True
-    ):
-        choices = random.sample(
-            COMMON_PHRASES,
-            k=min(8, len(COMMON_PHRASES))
-        )
-        set_sticker_texts(choices)
-        st.rerun()
-
-with pool_col2:
-    if st.button(
-        "🔄 清空 8 格",
-        use_container_width=True
-    ):
-        set_sticker_texts([""] * 8)
-        st.rerun()
-
-with pool_col3:
-    st.write(
-        f"目前隨機用語池：{len(COMMON_PHRASES)} 句"
-    )
-
-st.subheader("📝 自行輸入用語區")
-
-# ------------------------------------------------------------
-# 01～04
-# ------------------------------------------------------------
 
 row1 = st.columns(4)
 
@@ -321,10 +291,6 @@ for i, col in enumerate(row1):
             key=f"sticker_text_{i}",
             placeholder="輸入貼圖用語"
         )
-
-# ------------------------------------------------------------
-# 05～08
-# ------------------------------------------------------------
 
 row2 = st.columns(4)
 
@@ -339,26 +305,14 @@ for i, col in enumerate(row2, start=4):
 sticker_texts = get_sticker_texts()
 
 filled_count = sum(
-    1 for x in sticker_texts
-    if x.strip()
+    1 for text in sticker_texts
+    if text.strip()
 )
 
 st.info(f"📊 已填寫 {filled_count} / 8 格")
 
-
 # ============================================================
-# 隨機用語池參考
-# ============================================================
-
-with st.expander(
-    "📚 查看目前隨機用語池",
-    expanded=False
-):
-    st.write("、".join(COMMON_PHRASES))
-
-
-# ============================================================
-# ⑤ 透明背景
+# ⑤ 背景
 # ============================================================
 
 st.divider()
@@ -366,80 +320,143 @@ st.header("🌈 ⑤ 背景設定")
 
 transparent_bg = st.checkbox(
     "使用透明背景 PNG",
-    value=False,
-    help=(
-        "STEP 10A 只負責設定文字；"
-        "真正透明輸出將在後續接回 V8 系列核心。"
-    )
+    value=False
 )
-
 
 # ============================================================
 # ⑥ Prompt 預覽
 # ============================================================
-
-st.divider()
-st.header("🔍 ⑥ 目前設定預覽")
-
-st.subheader("01～08 貼圖文字")
-
-preview_cols = st.columns(4)
-
-for i, col in enumerate(preview_cols):
-    with col:
-        text = sticker_texts[i].strip()
-        st.markdown(
-            f"**{i + 1:02d}**　"
-            + (text if text else "（未輸入）")
-        )
-
-preview_cols2 = st.columns(4)
-
-for i, col in enumerate(preview_cols2, start=4):
-    with col:
-        text = sticker_texts[i].strip()
-        st.markdown(
-            f"**{i + 1:02d}**　"
-            + (text if text else "（未輸入）")
-        )
-
-all_text = "\n".join(
-    f"{i + 1:02d}. {text.strip()}"
-    for i, text in enumerate(sticker_texts)
-    if text.strip()
-)
 
 final_prompt = build_prompt(
     style,
     custom_style,
     selected_character,
     custom_character,
-    all_text,
+    sticker_texts,
     transparent_bg
 )
 
+st.divider()
+st.header("🔍 ⑥ AI生成規則預覽")
+
 with st.expander(
-    "👀 查看目前組合後的 AI Prompt",
+    "👀 查看完整 AI Prompt",
     expanded=False
 ):
     st.code(final_prompt, language="text")
 
-
 # ============================================================
-# STEP 10A 測試
+# ⑦ 生成 4×2
 # ============================================================
 
 st.divider()
+st.header("✨ ⑦ 生成 4×2 八格總圖")
 
-if st.button(
-    "🧪 更新文字設定",
+generate = st.button(
+    "✨ 一次生成 4×2 八格貼圖",
+    type="primary",
     use_container_width=True
-):
-    st.success(
-        f"✅ 已保存目前 01～08 文字設定，共 {filled_count} 格。"
+)
+
+if generate:
+
+    if st.session_state.uploaded_image_bytes is None:
+        st.warning("📷 請先上傳人物照片。")
+        st.stop()
+
+    if filled_count == 0:
+        st.warning("💬 請至少輸入一格貼圖文字。")
+        st.stop()
+
+    st.session_state.last_prompt = final_prompt
+
+    with st.spinner(
+        "🎨 AI 正在製作 4×2 八格貼圖總圖……"
+    ):
+
+        try:
+            image_buffer = BytesIO(
+                st.session_state.uploaded_image_bytes
+            )
+
+            result = client.images.edit(
+                model="gpt-image-2",
+                image=(
+                    "person.png",
+                    image_buffer,
+                    "image/png"
+                ),
+                prompt=final_prompt,
+                size="1536x1024"
+            )
+
+            image_base64 = result.data[0].b64_json
+            image_bytes = base64.b64decode(image_base64)
+
+            generated_image = Image.open(
+                BytesIO(image_bytes)
+            )
+
+            output_buffer = BytesIO()
+
+            generated_image.save(
+                output_buffer,
+                format="PNG"
+            )
+
+            st.session_state.generated_4x2_bytes = (
+                output_buffer.getvalue()
+            )
+
+            st.success(
+                "🎉 STEP 10B：4×2 八格總圖生成成功！"
+            )
+
+        except Exception as e:
+            st.error(
+                "❌ 4×2 八格生成失敗"
+            )
+            st.code(str(e))
+
+# ============================================================
+# ⑧ 結果
+# ============================================================
+
+if st.session_state.generated_4x2_bytes:
+
+    st.divider()
+    st.header("🖼️ ⑧ 4×2 八格總圖")
+
+    result_image = Image.open(
+        BytesIO(
+            st.session_state.generated_4x2_bytes
+        )
     )
 
+    st.image(
+        result_image,
+        caption="🤖 AI 生成的 4×2 八格總圖",
+        use_container_width=True
+    )
+
+    st.download_button(
+        label="⬇️ 儲存 4×2 總圖 PNG",
+        data=st.session_state.generated_4x2_bytes,
+        file_name="sticker_4x2.png",
+        mime="image/png",
+        use_container_width=True
+    )
+
+    with st.expander(
+        "🔍 查看本次實際送出的 Prompt"
+    ):
+        st.code(
+            st.session_state.last_prompt,
+            language="text"
+        )
+
+st.divider()
 st.caption(
-    "V10.0 Web Edition｜STEP 10A 修正版："
-    "01～08 貼圖文字＋隨機用語池"
+    "V10.0 Web Edition｜STEP 10B："
+    "01～08 固定位置 → 一次生成 4×2 八格總圖"
 )
