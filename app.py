@@ -4,45 +4,22 @@ import base64
 from io import BytesIO
 from PIL import Image
 
-
-# ============================================================
-# 基本設定
-# ============================================================
-
 st.set_page_config(
     page_title="LINE 貼圖創作工作室",
     page_icon="🎨",
     layout="wide"
 )
 
-
-# ============================================================
-# OpenAI
-# ============================================================
-
 client = OpenAI(
     api_key=st.secrets["OPENAI_API_KEY"]
 )
 
-
-# ============================================================
-# 標題
-# ============================================================
-
 st.title("🎨 LINE 貼圖創作工作室")
-
-st.caption(
-    "V10.0 Web Edition｜STEP 8 人物參考生成測試"
-)
-
+st.caption("V10.0 Web Edition｜STEP 8.1 人物參考生成修正版")
 st.divider()
 
-
-# ============================================================
-# STEP 8：上傳人物照片
-# ============================================================
-
 st.header("📷 ① 上傳人物照片")
+st.write("請上傳你希望 AI 參考的人物照片。")
 
 uploaded_file = st.file_uploader(
     "選擇人物照片",
@@ -50,29 +27,17 @@ uploaded_file = st.file_uploader(
     help="支援 JPG、JPEG、PNG、WEBP"
 )
 
-
-# ============================================================
-# 顯示人物照片
-# ============================================================
-
 if uploaded_file is not None:
-
     try:
-
         image = Image.open(uploaded_file)
-
         image.load()
-
         width, height = image.size
 
-        st.success(
-            "✅ 人物照片已成功載入"
-        )
+        st.success("✅ 人物照片已成功載入")
 
         col1, col2 = st.columns([2, 1])
 
         with col1:
-
             st.image(
                 image,
                 caption="📷 AI 將參考這張人物照片",
@@ -80,42 +45,17 @@ if uploaded_file is not None:
             )
 
         with col2:
-
             st.subheader("📐 圖片資訊")
-
-            st.write(
-                f"寬度：{width} px"
-            )
-
-            st.write(
-                f"高度：{height} px"
-            )
-
-            st.write(
-                f"格式：{image.format or '未知'}"
-            )
-
-            st.write(
-                f"模式：{image.mode}"
-            )
+            st.write(f"寬度：{width} px")
+            st.write(f"高度：{height} px")
+            st.write(f"格式：{image.format or '未知'}")
+            st.write(f"模式：{image.mode}")
 
     except Exception as e:
-
-        st.error(
-            "❌ 無法讀取圖片"
-        )
-
-        st.code(
-            str(e)
-        )
-
-
-# ============================================================
-# STEP 8：貼圖要求
-# ============================================================
+        st.error("❌ 無法讀取圖片")
+        st.code(str(e))
 
 st.divider()
-
 st.header("✏️ ② 告訴 AI 你想做什麼")
 
 prompt = st.text_area(
@@ -132,142 +72,65 @@ prompt = st.text_area(
     height=180
 )
 
-
-# ============================================================
-# 生成
-# ============================================================
-
 generate = st.button(
     "✨ 使用人物照片生成貼圖",
     type="primary",
     use_container_width=True
 )
 
-
-# ============================================================
-# AI 人物參考生成
-# ============================================================
-
 if generate:
-
     if uploaded_file is None:
-
-        st.warning(
-            "📷 請先上傳人物照片。"
-        )
-
+        st.warning("📷 請先上傳人物照片。")
         st.stop()
 
     if not prompt.strip():
-
-        st.warning(
-            "✏️ 請輸入貼圖要求。"
-        )
-
+        st.warning("✏️ 請輸入貼圖要求。")
         st.stop()
 
-
-    with st.spinner(
-        "🎨 AI 正在參考人物照片製作貼圖……"
-    ):
-
+    with st.spinner("🎨 AI 正在參考人物照片製作貼圖……"):
         try:
-
-            # ------------------------------------------------
-            # 將上傳圖片重新讀取
-            # ------------------------------------------------
-
             uploaded_file.seek(0)
 
-            input_image = Image.open(
-                uploaded_file
-            )
-
+            input_image = Image.open(uploaded_file)
             input_image.load()
 
+            image_buffer = BytesIO()
+            input_image.convert("RGBA").save(
+                image_buffer,
+                format="PNG"
+            )
+            image_buffer.seek(0)
 
-# ------------------------------------------------
-# 將人物照片轉成 PNG
-# ------------------------------------------------
-
-uploaded_file.seek(0)
-
-input_image = Image.open(uploaded_file)
-input_image.load()
-
-image_buffer = BytesIO()
-
-input_image.convert("RGBA").save(
-    image_buffer,
-    format="PNG"
-)
-
-image_buffer.seek(0)
-
-
-# ------------------------------------------------
-# 送入 OpenAI Image API
-# 明確指定 PNG MIME Type
-# ------------------------------------------------
-
-result = client.images.edit(
-    model="gpt-image-2",
-    image=(
-        "person.png",
-        image_buffer,
-        "image/png"
-    ),
-    prompt=prompt,
-    size="1024x1024"
-)
-
-            # ------------------------------------------------
-            # 取得生成結果
-            # ------------------------------------------------
+            result = client.images.edit(
+                model="gpt-image-2",
+                image=(
+                    "person.png",
+                    image_buffer,
+                    "image/png"
+                ),
+                prompt=prompt,
+                size="1024x1024"
+            )
 
             image_base64 = result.data[0].b64_json
-
-            image_bytes = base64.b64decode(
-                image_base64
-            )
+            image_bytes = base64.b64decode(image_base64)
 
             generated_image = Image.open(
                 BytesIO(image_bytes)
             )
 
-
-            # ------------------------------------------------
-            # 顯示結果
-            # ------------------------------------------------
-
-            st.success(
-                "🎉 人物參考生成成功！"
-            )
-
+            st.success("🎉 人物參考生成成功！")
             st.image(
                 generated_image,
                 caption="🤖 AI 生成結果",
                 use_container_width=True
             )
 
-
         except Exception as e:
-
-            st.error(
-                "❌ 人物參考生成失敗"
-            )
-
-            st.code(
-                str(e)
-            )
-
-
-# ============================================================
-# 開發進度
-# ============================================================
+            st.error("❌ 人物參考生成失敗")
+            st.code(str(e))
 
 st.divider()
-
 st.caption(
-    "V10.0 Web Edition｜STEP 8：人物參考生成"
+    "V10.0 Web Edition｜STEP 8.1：人物參考生成修正版"
 )
