@@ -32,21 +32,17 @@ client = OpenAI(
 st.title("🎨 LINE 貼圖創作工作室")
 
 st.caption(
-    "V10.0 Web Edition｜LINE 貼圖製作工作站"
+    "V10.0 Web Edition｜STEP 8 人物參考生成測試"
 )
 
 st.divider()
 
 
 # ============================================================
-# STEP 7：上傳人物照片
+# STEP 8：上傳人物照片
 # ============================================================
 
 st.header("📷 ① 上傳人物照片")
-
-st.write(
-    "請上傳你希望 AI 參考的人物照片。"
-)
 
 uploaded_file = st.file_uploader(
     "選擇人物照片",
@@ -56,7 +52,7 @@ uploaded_file = st.file_uploader(
 
 
 # ============================================================
-# 圖片預覽
+# 顯示人物照片
 # ============================================================
 
 if uploaded_file is not None:
@@ -65,12 +61,13 @@ if uploaded_file is not None:
 
         image = Image.open(uploaded_file)
 
-        # 確保圖片已完整載入
         image.load()
 
         width, height = image.size
 
-        st.success("✅ 人物照片已成功載入")
+        st.success(
+            "✅ 人物照片已成功載入"
+        )
 
         col1, col2 = st.columns([2, 1])
 
@@ -78,7 +75,7 @@ if uploaded_file is not None:
 
             st.image(
                 image,
-                caption="📷 人物照片預覽",
+                caption="📷 AI 將參考這張人物照片",
                 use_container_width=True
             )
 
@@ -102,17 +99,10 @@ if uploaded_file is not None:
                 f"模式：{image.mode}"
             )
 
-            st.divider()
-
-            st.info(
-                "💡 如果圖片方向或人物位置不理想，"
-                "可以重新選擇另一張照片。"
-            )
-
     except Exception as e:
 
         st.error(
-            "❌ 無法讀取這張圖片"
+            "❌ 無法讀取圖片"
         )
 
         st.code(
@@ -121,38 +111,41 @@ if uploaded_file is not None:
 
 
 # ============================================================
-# STEP 7-2：貼圖描述
+# STEP 8：貼圖要求
 # ============================================================
 
 st.divider()
 
-st.header("✏️ ② 貼圖描述")
+st.header("✏️ ② 告訴 AI 你想做什麼")
 
 prompt = st.text_area(
-    "告訴 AI 你希望人物呈現什麼樣的動作或情緒",
+    "貼圖要求",
     value=(
-        "Q版可愛人物，開心揮手，"
-        "LINE貼圖風格，"
-        "人物完整呈現，不裁切人物，"
-        "透明背景"
+        "請以我提供的人物照片作為主要人物參考。"
+        "保留人物的臉部特徵、五官比例、髮型與服飾辨識度。"
+        "將人物轉換成可愛的 Q 版 LINE 貼圖風格。"
+        "人物完整呈現，不要裁切頭部、身體或四肢。"
+        "畫面簡潔，具有貼圖感。"
+        "透明背景。"
+        "人物表情開心，正在揮手。"
     ),
-    height=130
+    height=180
 )
 
 
 # ============================================================
-# STEP 7-3：生成圖片
+# 生成
 # ============================================================
 
 generate = st.button(
-    "✨ 生成圖片",
+    "✨ 使用人物照片生成貼圖",
     type="primary",
     use_container_width=True
 )
 
 
 # ============================================================
-# AI 圖片生成
+# AI 人物參考生成
 # ============================================================
 
 if generate:
@@ -168,33 +161,62 @@ if generate:
     if not prompt.strip():
 
         st.warning(
-            "✏️ 請先輸入貼圖描述。"
+            "✏️ 請輸入貼圖要求。"
         )
 
         st.stop()
 
+
     with st.spinner(
-        "🎨 AI 正在製作貼圖，請稍候……"
+        "🎨 AI 正在參考人物照片製作貼圖……"
     ):
 
         try:
 
             # ------------------------------------------------
-            # 目前 STEP 7 先確認：
-            # 上傳圖片 → Python → AI
+            # 將上傳圖片重新讀取
             # ------------------------------------------------
 
-            image = Image.open(uploaded_file)
+            uploaded_file.seek(0)
+
+            input_image = Image.open(
+                uploaded_file
+            )
+
+            input_image.load()
+
 
             # ------------------------------------------------
-            # 暫時仍使用文字生成測試
+            # 轉成 PNG
             # ------------------------------------------------
 
-            result = client.images.generate(
+            image_buffer = BytesIO()
+
+            input_image.convert(
+                "RGBA"
+            ).save(
+                image_buffer,
+                format="PNG"
+            )
+
+            image_buffer.seek(0)
+
+
+            # ------------------------------------------------
+            # 將人物照片送進圖片模型
+            # ------------------------------------------------
+
+            result = client.images.edit(
                 model="gpt-image-2",
+                image=image_buffer,
                 prompt=prompt,
                 size="1024x1024"
             )
+
+
+            # ------------------------------------------------
+            # 取得生成結果
+            # ------------------------------------------------
 
             image_base64 = result.data[0].b64_json
 
@@ -206,20 +228,26 @@ if generate:
                 BytesIO(image_bytes)
             )
 
+
+            # ------------------------------------------------
+            # 顯示結果
+            # ------------------------------------------------
+
             st.success(
-                "🎉 AI 圖片生成成功！"
+                "🎉 人物參考生成成功！"
             )
 
             st.image(
                 generated_image,
-                caption="AI 生成結果",
+                caption="🤖 AI 生成結果",
                 use_container_width=True
             )
+
 
         except Exception as e:
 
             st.error(
-                "❌ 圖片生成失敗"
+                "❌ 人物參考生成失敗"
             )
 
             st.code(
@@ -228,11 +256,11 @@ if generate:
 
 
 # ============================================================
-# 目前開發進度
+# 開發進度
 # ============================================================
 
 st.divider()
 
 st.caption(
-    "V10.0 Web Edition｜目前：STEP 7 上傳人物照片"
+    "V10.0 Web Edition｜STEP 8：人物參考生成"
 )
