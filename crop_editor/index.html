@@ -1,0 +1,154 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<script src="https://unpkg.com/streamlit-component-lib@2.0.0/dist/index.js"></script>
+<style>
+html,body{margin:0;padding:0;background:transparent;font-family:Arial,"Microsoft JhengHei",sans-serif}
+#wrap{width:100%;box-sizing:border-box}
+#canvas{display:block;width:100%;height:auto;cursor:default;border:1px solid #aaa;box-sizing:border-box}
+#status{font-size:14px;padding:7px 0;color:#555}
+#help{font-size:13px;color:#666;margin-bottom:6px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="help">拖曳框中央＝移動　｜　拖曳角落＝調整大小　｜　拖曳邊＝單方向調整</div>
+  <canvas id="canvas"></canvas>
+  <div id="status">正在載入裁切畫布…</div>
+</div>
+<script>
+const C = document.getElementById("canvas");
+const ctx = C.getContext("2d");
+const statusEl = document.getElementById("status");
+let args = null;
+let img = new Image();
+let boxes = [];
+let iw = 1, ih = 1;
+let scale = 1;
+let active = -1;
+let mode = null;
+let start = null;
+let snapshot = null;
+const colors = ["#ff4040","#3987ff","#32ad61","#a04bd0","#ff922e","#25aeb0","#db3f9b","#956c3c"];
+
+function cloneBoxes(b){return b.map(x=>x.map(Number));}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+function resizeCanvas(){
+  if(!iw||!ih)return;
+  const maxW = Math.min(1100, Math.max(420, window.innerWidth || 900));
+  C.width = Math.round(maxW);
+  C.height = Math.round(maxW * ih / iw);
+  scale = C.width / iw;
+  draw();
+  if(window.Streamlit) Streamlit.setFrameHeight(document.body.scrollHeight);
+}
+
+function loadImage(){
+  img.onload=()=>{
+    iw=args.image_width||img.naturalWidth;
+    ih=args.image_height||img.naturalHeight;
+    boxes=cloneBoxes(args.boxes||defaultBoxes());
+    resizeCanvas();
+    statusEl.textContent="8 個裁切框已載入";
+  };
+  img.src="data:image/png;base64,"+args.image_b64;
+}
+function defaultBoxes(){
+  const out=[];
+  for(let i=0;i<8;i++){
+    const c=i%4,r=Math.floor(i/4);
+    out.push([Math.round(c*iw/4),Math.round(r*ih/2),
+              Math.round((c+1)*iw/4),Math.round((r+1)*ih/2)]);
+  }
+  return out;
+}
+function draw(){
+  if(!img.complete)return;
+  ctx.clearRect(0,0,C.width,C.height);
+  ctx.drawImage(img,0,0,C.width,C.height);
+  for(let i=0;i<8;i++){
+    const b=boxes[i], x=b[0]*scale,y=b[1]*scale,w=(b[2]-b[0])*scale,h=(b[3]-b[1])*scale;
+    ctx.save();
+    ctx.strokeStyle=colors[i]; ctx.lineWidth=3; ctx.setLineDash([10,7]);
+    ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+    const hs=9;
+    const pts=[[x,y],[x+w,y],[x,y+h],[x+w,y+h]];
+    ctx.fillStyle=colors[i];
+    pts.forEach(p=>ctx.fillRect(p[0]-hs/2,p[1]-hs/2,hs,hs));
+    ctx.font="bold 16px Arial";
+    ctx.fillStyle=colors[i];
+    ctx.fillText(String(i+1).padStart(2,"0"),x+8,y+20);
+    ctx.restore();
+  }
+}
+function pos(e){
+  const r=C.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(iw/r.width),y:(e.clientY-r.top)*(ih/r.height)};
+}
+function hit(p){
+  for(let i=7;i>=0;i--){
+    const b=boxes[i], t=Math.max(12,12/scale);
+    const nearL=Math.abs(p.x-b[0])<=t, nearR=Math.abs(p.x-b[2])<=t;
+    const nearT=Math.abs(p.y-b[1])<=t, nearB=Math.abs(p.y-b[3])<=t;
+    const inside=p.x>=b[0]&&p.x<=b[2]&&p.y>=b[1]&&p.y<=b[3];
+    if(nearL&&nearT)return [i,"nw"];
+    if(nearR&&nearT)return [i,"ne"];
+    if(nearL&&nearB)return [i,"sw"];
+    if(nearR&&nearB)return [i,"se"];
+    if(nearT&&p.x>b[0]&&p.x<b[2])return [i,"n"];
+    if(nearB&&p.x>b[0]&&p.x<b[2])return [i,"s"];
+    if(nearL&&p.y>b[1]&&p.y<b[3])return [i,"w"];
+    if(nearR&&p.y>b[1]&&p.y<b[3])return [i,"e"];
+    if(inside)return [i,"move"];
+  }
+  return [-1,null];
+}
+function send(){
+  if(window.Streamlit) Streamlit.setComponentValue({boxes:cloneBoxes(boxes)});
+}
+C.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  C.setPointerCapture(e.pointerId);
+  const p=pos(e), h=hit(p);
+  if(h[0]<0)return;
+  active=h[0]; mode=h[1]; start=p; snapshot=cloneBoxes(boxes);
+  statusEl.textContent=`正在調整 ${String(active+1).padStart(2,"0")}…`;
+});
+C.addEventListener("pointermove",e=>{
+  if(active<0)return;
+  const p=pos(e), b=snapshot[active], dx=p.x-start.x, dy=p.y-start.y;
+  let n=[...b], minW=Math.max(30,iw*0.02), minH=Math.max(30,ih*0.02);
+  if(mode==="move"){
+    const w=b[2]-b[0],h=b[3]-b[1];
+    let x1=clamp(b[0]+dx,0,iw-w), y1=clamp(b[1]+dy,0,ih-h);
+    n=[x1,y1,x1+w,y1+h];
+  } else {
+    if(mode.includes("w")) n[0]=clamp(b[0]+dx,0,b[2]-minW);
+    if(mode.includes("e")) n[2]=clamp(b[2]+dx,b[0]+minW,iw);
+    if(mode.includes("n")) n[1]=clamp(b[1]+dy,0,b[3]-minH);
+    if(mode.includes("s")) n[3]=clamp(b[3]+dy,b[1]+minH,ih);
+  }
+  boxes[active]=n; draw();
+});
+C.addEventListener("pointerup",e=>{
+  if(active>=0){C.releasePointerCapture(e.pointerId);send();}
+  active=-1;mode=null;statusEl.textContent="已更新裁切位置";
+});
+C.addEventListener("pointercancel",e=>{
+  active=-1;mode=null;
+});
+window.addEventListener("resize",resizeCanvas);
+
+function render(event){
+  args=event.detail.args;
+  if(!args)return;
+  loadImage();
+}
+Streamlit.events.addEventListener(Streamlit.RENDER_EVENT,render);
+Streamlit.setComponentReady();
+Streamlit.setFrameHeight(document.body.scrollHeight);
+</script>
+</body>
+</html>
