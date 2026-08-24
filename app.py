@@ -10,6 +10,31 @@ import json
 
 V10_PRESET_FILE = Path(__file__).with_name("V10_user_presets.json")
 
+V10_CUSTOM_PHRASE_POOL_FILE = Path(__file__).with_name("V10_custom_phrase_pool.json")
+
+def _load_v10_phrase_pool():
+    try:
+        if V10_CUSTOM_PHRASE_POOL_FILE.exists():
+            d=json.loads(V10_CUSTOM_PHRASE_POOL_FILE.read_text(encoding="utf-8"))
+            if isinstance(d, list):
+                return [str(x).strip() for x in d if str(x).strip()]
+    except Exception:
+        pass
+    return []
+
+def _save_v10_phrase_pool(values):
+    values=list(dict.fromkeys([str(x).strip() for x in values if str(x).strip()]))
+    try:
+        tmp=V10_CUSTOM_PHRASE_POOL_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(values,ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(V10_CUSTOM_PHRASE_POOL_FILE)
+        return True
+    except Exception:
+        return False
+
+V10_CUSTOM_PHRASE_POOL = _load_v10_phrase_pool()
+
+
 def _load_v10_presets():
     d={"style_custom":[""]*10,
        "style_custom_names":[f"使用者自定{i}" for i in range(1,11)],
@@ -195,132 +220,66 @@ if uploaded:
 
 st.divider()
 st.header("🎨 ② 貼圖風格")
-st.caption("🌈 先選一種模式：V8 預設風格，或「自定義風格」。兩者不會同時生效。")
+st.caption("🌈 預設 V8 風格與「自定義風格」二選一。選擇自定義後，才會出現可套用的 10 組儲存風格。")
 
-# ------------------------------------------------------------
-# 風格主選單：
-# 第一層直接選 V8 風格
-# 最後一項才是「⭐ 自定義風格」
-# ------------------------------------------------------------
-V8_STYLE_CUSTOM_OPTION = "⭐ 自定義風格"
-style_options = ["↓ 請選擇風格"] + [
-    x for x in V8_STYLES if not x.startswith("⭐ 自訂")
-] + [V8_STYLE_CUSTOM_OPTION]
+# 自定義風格放在第 2 個位置，方便快速選擇。
+_v8_style_items=[x for x in V8_STYLES if not x.startswith("⭐ 自訂")]
+_style_options=["↓ 請選擇風格", "⭐ 自定義風格"] + _v8_style_items
 
-style_mode = st.selectbox(
+style_mode=st.selectbox(
     "🌈 貼圖風格",
-    style_options,
+    _style_options,
     key="v10_style_mode",
 )
 
-# ------------------------------------------------------------
-# 預設風格模式
-# ------------------------------------------------------------
-if style_mode != V8_STYLE_CUSTOM_OPTION:
-    style = style_mode
-
-    # 正常 V8 風格時，不顯示自定義欄位。
-    # 這樣使用者不會產生「Q版黏土＋自定義，到底誰生效？」的疑問。
-    custom_style = ""
-
-# ------------------------------------------------------------
-# 自定義風格模式
-# 只有選到「⭐ 自定義風格」才顯示
-# ------------------------------------------------------------
-else:
+if style_mode=="⭐ 自定義風格":
+    style="↓ 請選擇風格"
     st.success("✨ 已切換到「自定義風格」模式")
 
-    _custom_style_slots = []
-    for _i in range(1, 11):
-        _sv = st.session_state.get(f"v10_style_custom_{_i}", "").strip()
-        _sn = st.session_state.get(
-            f"v10_style_name_{_i}",
-            f"使用者自定{_i}"
-        ).strip() or f"使用者自定{_i}"
-
+    _custom_style_slots=[]
+    for _i in range(1,11):
+        _sv=st.session_state.get(f"v10_style_custom_{_i}","").strip()
+        _sn=st.session_state.get(f"v10_style_name_{_i}",f"使用者自定{_i}").strip() or f"使用者自定{_i}"
         if _sv:
-            _custom_style_slots.append((_i, _sn, _sv))
+            _custom_style_slots.append((_i,_sn,_sv))
 
-    if _custom_style_slots:
-        _saved_labels = [
-            f"{i:02d}｜{name}"
-            for i, name, _ in _custom_style_slots
-        ]
+    _saved_labels=["✏️ 尚未選擇／新增"]+[f"{i:02d}｜{name}" for i,name,_ in _custom_style_slots]
+    _saved_choice=st.selectbox(
+        "💾 選擇已儲存的自定義風格",
+        _saved_labels,
+        key="v10_saved_custom_style_choice",
+    )
 
-        _selected_saved = st.selectbox(
-            "💾 選擇已儲存的自定義風格",
-            ["✏️ 直接輸入新的自定義風格"] + _saved_labels,
-            key="v10_saved_custom_style_choice",
-        )
-
-        if _selected_saved != "✏️ 直接輸入新的自定義風格":
-            _selected_index = _saved_labels.index(_selected_saved)
-            _selected_slot = _custom_style_slots[_selected_index]
-            custom_style = _selected_slot[2]
-            st.info(
-                f"💾 已套用：{_selected_slot[0]:02d}｜{_selected_slot[1]}"
-            )
-        else:
-            custom_style = ""
+    if _saved_choice!="✏️ 尚未選擇／新增":
+        _pos=_saved_labels.index(_saved_choice)-1
+        custom_style=_custom_style_slots[_pos][2]
+        st.info(f"💾 已套用：{_custom_style_slots[_pos][0]:02d}｜{_custom_style_slots[_pos][1]}")
     else:
-        _selected_saved = "✏️ 直接輸入新的自定義風格"
-        custom_style = ""
+        custom_style=""
 
-    # 只有在自定義模式才出現 1～10 編輯區。
-    with st.expander("💾 編輯／儲存自定義風格 1～10", expanded=False):
-        for _i in range(1, 11):
-            _a, _b = st.columns([1, 4])
-
+    with st.expander("💾 編輯／儲存自定義風格 1～10",expanded=False):
+        for _i in range(1,11):
+            _a,_b=st.columns([1,4])
             with _a:
-                st.text_input(
-                    f"名稱 {_i:02d}",
-                    key=f"v10_style_name_{_i}",
-                )
-
+                st.text_input(f"名稱 {_i:02d}",key=f"v10_style_name_{_i}")
             with _b:
-                st.text_area(
-                    f"自定義風格 {_i:02d}",
-                    key=f"v10_style_custom_{_i}",
-                    height=65,
-                )
+                st.text_area(f"自定義風格 {_i:02d}",key=f"v10_style_custom_{_i}",height=65)
 
-        if st.button(
-            "💾 儲存 10 組自定風格",
-            key="v10_save_styles",
-            use_container_width=True,
-        ):
+        if st.button("💾 儲存 10 組自定風格",key="v10_save_styles",use_container_width=True):
             if _save_v10_presets():
                 st.success("✅ 10 組自定風格已儲存")
                 st.rerun()
             else:
                 st.error("❌ 儲存失敗")
 
-    # 本次臨時輸入，只在自定義模式有效。
-    _direct_custom = st.text_area(
-        "✏️ 本次自定義風格",
-        value="" if custom_style else custom_style,
-        height=90,
-        key="v10_custom_style_current",
-        help="只有「自定義風格」模式會使用這裡的內容。",
-    )
+    st.warning("ℹ️ 目前只使用「自定義風格」，不會同時套用其他 V8 預設風格。")
+else:
+    style=style_mode
+    custom_style=""
 
-    # 如果使用者有直接輸入，就以本次輸入為最終自定義風格。
-    if _direct_custom.strip():
-        custom_style = _direct_custom.strip()
+with st.expander("📚 查看 V8 全部風格",expanded=False):
+    st.write("、".join(_style_options[2:]))
 
-    # 自定義模式下，style 不再使用 V8 預設風格。
-    style = "↓ 請選擇風格"
-
-    st.warning(
-        "ℹ️ 目前為「自定義風格」模式：V8 預設風格不會同時套用。"
-    )
-
-with st.expander("📚 查看 V8 全部風格", expanded=False):
-    st.write("、".join([
-        x for x in V8_STYLES if not x.startswith("⭐ 自訂")
-    ]))
-
-st.divider()
 st.header("👤 ③ 人物與畫面特色")
 st.caption("可複選；以下 3 組自定義人物／場景需求，只有打勾才會啟用。")
 selected_character=st.multiselect("🎯 V8 人物／畫面特色（可複選）",CHARACTER_OPTIONS,key="v10_character_options")
@@ -335,69 +294,113 @@ custom_character="\n".join(_custom_character_values)
 if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_container_width=True):
     st.success("✅ 3 組人物／場景設定已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
 
-st.header("💬 ④ 01～08 貼圖文字（V8完整語詞庫）")
+st.header("💬 ④ 01～08 貼圖文字")
+st.caption("🎲 V8 原有語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
 
-# V8 全部隨機用語池。
-_pool_names = list(V8_RANDOM_POOLS.keys())
-_pool_choice = st.selectbox(
-    "🎲 隨機用語分類",
-    ["全部隨機"] + _pool_names,
-    key="v8_pool_choice"
+_pool_names=list(V8_RANDOM_POOLS.keys())
+_pool_choice=st.selectbox(
+    "🎲 隨機用語池",
+    ["全部 V8 語詞"]+_pool_names+["⭐ 我的自定義語詞池"],
+    key="v10_phrase_pool_choice",
 )
 
-a,b,c = st.columns(3)
-with a:
-    if st.button("🎲 骰一次 8 句", use_container_width=True):
-        if _pool_choice == "全部隨機":
-            pool = [x for vals in V8_RANDOM_POOLS.values() for x in vals]
+if _pool_choice=="⭐ 我的自定義語詞池":
+    with st.expander("💾 我的自定義語詞池",expanded=True):
+        _new_phrase=st.text_input(
+            "➕ 新增一句語詞",
+            key="v10_new_phrase",
+            placeholder="例如：今天也要加油！",
+        )
+        _pa,_pb,_pc=st.columns(3)
+        with _pa:
+            if st.button("➕ 加入語詞池",key="v10_add_phrase",use_container_width=True):
+                if _new_phrase.strip():
+                    V10_CUSTOM_PHRASE_POOL.append(_new_phrase.strip())
+                    V10_CUSTOM_PHRASE_POOL[:]=list(dict.fromkeys(V10_CUSTOM_PHRASE_POOL))
+                    if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
+                        st.success("✅ 已加入並儲存")
+                        st.rerun()
+                    else:
+                        st.error("❌ 儲存失敗")
+        with _pb:
+            if st.button("🎲 從我的池子抽 8 句",key="v10_random_my_pool",use_container_width=True):
+                if V10_CUSTOM_PHRASE_POOL:
+                    vals=random.sample(V10_CUSTOM_PHRASE_POOL,min(8,len(V10_CUSTOM_PHRASE_POOL)))
+                    while len(vals)<8:
+                        vals.append(random.choice(V10_CUSTOM_PHRASE_POOL))
+                    random.shuffle(vals)
+                    set_texts(vals)
+                    st.rerun()
+                else:
+                    st.warning("目前自定義語詞池是空的。")
+        with _pc:
+            if st.button("🗑️ 清空我的池子",key="v10_clear_my_pool",use_container_width=True):
+                V10_CUSTOM_PHRASE_POOL.clear()
+                if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
+                    st.success("✅ 已清空")
+                    st.rerun()
+
+        if V10_CUSTOM_PHRASE_POOL:
+            st.caption(f"目前共有 {len(V10_CUSTOM_PHRASE_POOL)} 句")
+            st.write("、".join(V10_CUSTOM_PHRASE_POOL))
         else:
-            pool = V8_RANDOM_POOLS.get(_pool_choice, [])
-        vals = random.sample(pool, min(8, len(pool)))
-        while len(vals) < 8 and pool:
-            vals.append(random.choice(pool))
-        random.shuffle(vals)
-        set_texts(vals)
+            st.info("尚未建立自定義語詞。")
+
+    _active_pool=V10_CUSTOM_PHRASE_POOL
+else:
+    if _pool_choice=="全部 V8 語詞":
+        _active_pool=[x for vals in V8_RANDOM_POOLS.values() for x in vals]
+    else:
+        _active_pool=V8_RANDOM_POOLS.get(_pool_choice,[])
+
+    a,b,c=st.columns(3)
+    with a:
+        if st.button("🎲 隨機填入 8 格",use_container_width=True,key="v10_random_v8"):
+            if _active_pool:
+                vals=random.sample(_active_pool,min(8,len(_active_pool)))
+                while len(vals)<8:
+                    vals.append(random.choice(_active_pool))
+                random.shuffle(vals)
+                set_texts(vals)
+                st.rerun()
+    with b:
+        st.write(f"目前語詞池：{len(_active_pool)} 句")
+    with c:
+        st.write("V8 原有分類")
+
+# V8 原本的「分類→語句→指定格」功能保留。
+if _pool_choice!="⭐ 我的自定義語詞池":
+    p1,p2,p3=st.columns([1.2,2.4,0.8])
+    with p1:
+        _common_cat=st.selectbox("常用語分類",_pool_names,key="v8_common_cat")
+    with p2:
+        _common_phrase=st.selectbox("常用語參考",V8_RANDOM_POOLS.get(_common_cat,[]),key="v8_common_phrase")
+    with p3:
+        _target_slot=st.selectbox("放入第",[f"{i:02d}" for i in range(1,9)],key="v8_target_slot")
+    if st.button("➕ 放入選定格",key="v8_insert_phrase"):
+        set_texts([
+            _common_phrase if i==int(_target_slot)-1 else st.session_state.get(f"sticker_text_{i}","")
+            for i in range(8)
+        ])
         st.rerun()
-with b:
-    if st.button("🔄 清空 8 格", use_container_width=True):
-        set_texts([""]*8)
-        st.rerun()
-with c:
-    st.write(f"V8 語詞分類：{len(_pool_names)} 類")
 
-# V8 常用語參考：選分類 → 選語句 → 指定格。
-p1,p2,p3 = st.columns([1.2,2.4,0.8])
-with p1:
-    _common_cat = st.selectbox("常用語分類", _pool_names, key="v8_common_cat")
-with p2:
-    _common_phrase = st.selectbox("常用語參考", V8_RANDOM_POOLS.get(_common_cat, []), key="v8_common_phrase")
-with p3:
-    _target_slot = st.selectbox("放入第", [f"{i:02d}" for i in range(1,9)], key="v8_target_slot")
-if st.button("➕ 放入選定格", key="v8_insert_phrase"):
-    set_texts([
-        _common_phrase if i == int(_target_slot)-1 else st.session_state.get(f"sticker_text_{i}","")
-        for i in range(8)
-    ])
-    st.rerun()
-
-cols = st.columns(4)
-for i, col in enumerate(cols):
+cols=st.columns(4)
+for i,col in enumerate(cols):
     with col:
-        st.text_input(f"{i+1:02d}", key=f"sticker_text_{i}")
-cols = st.columns(4)
-for i, col in enumerate(cols, start=4):
+        st.text_input(f"{i+1:02d}",key=f"sticker_text_{i}")
+cols=st.columns(4)
+for i,col in enumerate(cols,start=4):
     with col:
-        st.text_input(f"{i+1:02d}", key=f"sticker_text_{i}")
+        st.text_input(f"{i+1:02d}",key=f"sticker_text_{i}")
 
-texts = get_texts()
-filled = sum(bool(x.strip()) for x in texts)
+texts=get_texts()
+filled=sum(bool(x.strip()) for x in texts)
 st.info(f"已填寫 {filled} / 8 格")
 
-with st.expander("📚 查看 V8 全部語詞分類與內容", expanded=False):
-    for cat, vals in V8_RANDOM_POOLS.items():
+with st.expander("📚 查看 V8 全部語詞分類與內容",expanded=False):
+    for cat,vals in V8_RANDOM_POOLS.items():
         st.markdown(f"**{cat}**")
         st.write("、".join(vals))
-
 
 st.divider()
 st.header("🔤 ⑤ 貼圖字型＋125 種帶圖字型")
