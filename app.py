@@ -399,7 +399,9 @@ if uploaded:
         b = BytesIO()
         im.convert("RGBA").save(b, "PNG")
         st.session_state.uploaded_image_bytes = b.getvalue()
-        st.image(im, caption="人物照片", width=420)
+        _img_c1,_img_c2,_img_c3=st.columns([1,2,1])
+        with _img_c2:
+            st.image(im, caption="人物照片", width=420)
         st.success("✅ 人物照片已載入")
     except Exception as e:
         st.error("❌ 無法讀取人物照片")
@@ -490,7 +492,7 @@ _pool_names=list(V8_RANDOM_POOLS.keys())
 v10_subsection("🎲 隨機用語與自定義語詞池", "#3498db")
 _pool_choice=st.selectbox(
     "🎲 隨機用語池",
-    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池"] + _pool_names + ["全部內建語詞"],
+    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池", "全部內建語詞"] + _pool_names,
     key="v10_phrase_pool_choice",
 )
 
@@ -700,7 +702,7 @@ _tb1,_tb2,_tb3=st.columns([1,2,1])
 with _tb2:
     transparent = st.checkbox("使用透明背景 PNG", value=False)
 
-v10_subsection("🌈 風格選擇", "#ff9f43")
+v10_subsection("🌈 貼圖設定查看", "#ff9f43")
 style_mode = st.session_state.get("v10_style_mode", "↓ 請選擇風格")
 
 prompt = build_prompt(style, custom_style, selected_character,
@@ -726,7 +728,7 @@ if _selected_font_for_prompt:
         f"{V8_TEXT_EFFECT_CATALOG[_selected_font_for_prompt]}。"
         "\n請把此字型當作文字材質與視覺參考，不要照搬參考圖中的人物或其他內容。"
     )
-with st.expander("🔍 查看 AI Prompt"):
+with st.expander("🔍 點選查看貼圖設定"):
     st.code(prompt, language="text")
 
 v10_section("✨ ⑦ 生成 4×2 原始總圖", "#e67e22")
