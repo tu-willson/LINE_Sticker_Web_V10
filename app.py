@@ -94,6 +94,142 @@ st.set_page_config(
     layout="wide",
 )
 
+# ============================================================
+# V10 STEP 20｜介面重新排版
+# - 大標題置中、放大
+# - 每個主要區域以彩虹色分隔
+# - 一般控制項限制寬度，避免滿版橫跨
+# - 主要內容維持中央操作區
+# ============================================================
+st.markdown("""
+<style>
+:root{
+  --v10-max: 1180px;
+  --v10-control: 820px;
+}
+.block-container{
+  max-width:1180px !important;
+  padding-left:2rem !important;
+  padding-right:2rem !important;
+}
+.v10-main-title{
+  text-align:center;
+  font-size:clamp(2rem,4vw,3.15rem);
+  font-weight:900;
+  letter-spacing:.04em;
+  margin:1.0rem auto 1.8rem;
+}
+.v10-section{
+  position:relative;
+  margin:2.8rem 0 1.4rem;
+  padding:1.15rem 1rem 1rem;
+  border-top:5px solid var(--accent);
+  border-bottom:2px solid color-mix(in srgb,var(--accent) 45%, transparent);
+  background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 9%, transparent),transparent);
+  border-radius:12px;
+  text-align:center;
+}
+.v10-section::after{
+  content:"";
+  display:block;
+  width:150px;
+  height:5px;
+  border-radius:99px;
+  background:var(--accent);
+  margin:.8rem auto 0;
+}
+.v10-section-title{
+  font-size:clamp(1.65rem,3vw,2.35rem);
+  line-height:1.2;
+  font-weight:900;
+  letter-spacing:.03em;
+}
+.v10-subsection{
+  width:min(900px,100%);
+  margin:1.25rem auto .75rem;
+  padding:.65rem 1rem;
+  border-left:6px solid var(--accent);
+  border-radius:8px;
+  background:color-mix(in srgb,var(--accent) 10%, transparent);
+  font-size:1.2rem;
+  font-weight:800;
+  text-align:left;
+}
+.v10-note{
+  width:min(900px,100%);
+  margin:.5rem auto 1rem;
+  text-align:center;
+  opacity:.9;
+}
+.v10-control{
+  width:min(var(--v10-control),100%);
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+.v10-control-wide{
+  width:min(1050px,100%);
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+.v10-centered-image{
+  display:flex;
+  justify-content:center;
+}
+div[data-testid="stFileUploader"],
+div[data-testid="stSelectbox"],
+div[data-testid="stMultiSelect"],
+div[data-testid="stTextInput"],
+div[data-testid="stTextArea"],
+div[data-testid="stNumberInput"]{
+  width:min(var(--v10-control),100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+div[data-testid="stButton"]{
+  width:min(520px,100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+.v10-small-button div[data-testid="stButton"]{
+  width:min(360px,100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+div[data-testid="stCheckbox"],
+div[data-testid="stRadio"]{
+  width:min(var(--v10-control),100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+div[data-testid="stExpander"]{
+  width:min(1000px,100%) !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+}
+@media (max-width:800px){
+  .block-container{
+    padding-left:.75rem !important;
+    padding-right:.75rem !important;
+  }
+  .v10-section{margin-top:2rem;}
+  .v10-section-title{font-size:1.55rem;}
+}
+</style>
+""", unsafe_allow_html=True)
+
+def v10_section(title, accent="#7c4dff"):
+    st.markdown(
+        f'<div class="v10-section" style="--accent:{accent}">'
+        f'<div class="v10-section-title">{title}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+def v10_subsection(title, accent="#4f8cff"):
+    st.markdown(
+        f'<div class="v10-subsection" style="--accent:{accent}">{title}</div>',
+        unsafe_allow_html=True,
+    )
+
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 COMMON_PHRASES = [
@@ -198,11 +334,11 @@ st.markdown("""<style>
 .v10-soft-box{padding:8px 12px;border-radius:10px;background:#fafafa;border:1px solid #e5e7eb;}
 </style>""",unsafe_allow_html=True)
 
-st.title("🎨 LINE 貼圖創作工作室")
+st.markdown('<div class="v10-main-title">🎨 LINE 貼圖創作工作室</div>', unsafe_allow_html=True)
 st.caption("V10 STEP 10C｜原生 Canvas 直接拖曳裁切")
 st.divider()
 
-st.header("📷 ① 上傳人物照片")
+v10_section("📷 ① 上傳人物照片", "#ff5c7a")
 uploaded = st.file_uploader("選擇人物照片", type=["jpg","jpeg","png","webp"])
 if uploaded:
     try:
@@ -221,7 +357,7 @@ if uploaded:
 st.divider()
 V8_STYLE_CUSTOM_OPTION = "⭐ 自定義風格"
 
-st.header("🎨 ② 貼圖風格")
+v10_section("🎨 ② 貼圖風格", "#ff9f43")
 st.caption("🌈 預設 V8 風格與「自定義風格」二選一。選擇自定義後，才會出現可套用的 10 組儲存風格。")
 
 # 自定義風格放在第 2 個位置，方便快速選擇。
@@ -282,7 +418,7 @@ else:
 with st.expander("📚 查看 V8 全部風格",expanded=False):
     st.write("、".join(_style_options[2:]))
 
-st.header("👤 ③ 人物與畫面特色")
+v10_section("👤 ③ 人物與畫面特色", "#2ecc71")
 st.caption("可複選；以下 3 組自定義人物／場景需求，只有打勾才會啟用。")
 selected_character=st.multiselect("🎯 V8 人物／畫面特色（可複選）",CHARACTER_OPTIONS,key="v10_character_options")
 for _i in range(1,4):
@@ -296,10 +432,11 @@ custom_character="\n".join(_custom_character_values)
 if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_container_width=True):
     st.success("✅ 3 組人物／場景設定已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
 
-st.header("💬 ④ 01～08 貼圖文字")
+v10_section("💬 ④ 01～08 貼圖文字", "#3498db")
 st.caption("🎲 V8 原有語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
 
 _pool_names=list(V8_RANDOM_POOLS.keys())
+v10_subsection("🎲 隨機用語與自定義語詞池", "#3498db")
 _pool_choice=st.selectbox(
     "🎲 隨機用語池",
     ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池"] + _pool_names + ["全部 V8 語詞"],
@@ -408,8 +545,9 @@ with st.expander("📚 查看 V8 全部語詞分類與內容",expanded=False):
         st.write("、".join(vals))
 
 st.divider()
-st.header("🔤 ⑤ 貼圖字型＋125 種帶圖字型")
+v10_section("🔤 ⑤ 貼圖字型＋125 種帶圖字型", "#8e67d8")
 
+v10_subsection("✏️ 一般貼圖字型效果", "#8e67d8")
 text_style = st.selectbox(
     "文字貼圖效果",
     V8_TEXT_STYLE_OPTIONS,
@@ -418,6 +556,7 @@ text_style = st.selectbox(
 )
 
 _selected_font = st.session_state.get("v8_selected_font", None)
+v10_subsection("🔤 125 種帶圖字型", "#8e67d8")
 st.markdown('<div id="v10-font-result-anchor"></div>', unsafe_allow_html=True)
 if _selected_font:
     st.success(f"🎨 已選擇 125 字型：{_selected_font:03d}｜{V8_TEXT_EFFECT_CATALOG[_selected_font]}")
@@ -504,9 +643,11 @@ with st.expander("🔎 已選字型大圖", expanded=False):
         st.write("尚未選擇。")
 
 st.divider()
-st.header("🌈 ⑥ 背景設定")
+v10_section("🌈 ⑥ 背景設定", "#16a085")
+v10_subsection("🪄 透明背景", "#16a085")
 transparent = st.checkbox("使用透明背景 PNG", value=False)
 
+v10_subsection("🌈 風格選擇", "#ff9f43")
 style_mode = st.session_state.get("v10_style_mode", "↓ 請選擇風格")
 
 prompt = build_prompt(style, custom_style, selected_character,
@@ -535,7 +676,7 @@ if _selected_font_for_prompt:
 with st.expander("🔍 查看 AI Prompt"):
     st.code(prompt, language="text")
 
-st.header("✨ ⑦ 生成 4×2 原始總圖")
+v10_section("✨ ⑦ 生成 4×2 原始總圖", "#e67e22")
 if st.button("✨ 生成 4×2 八格總圖", type="primary", use_container_width=True):
     if not st.session_state.uploaded_image_bytes:
         st.warning("請先上傳人物照片。")
@@ -612,7 +753,7 @@ if st.button("✨ 生成 4×2 八格總圖", type="primary", use_container_width
 # ------------------------------------------------------------
 if st.session_state.generated_4x2_bytes:
     st.divider()
-    st.header("✂️ ⑦ 直接用滑鼠調整 8 個裁切框")
+    v10_section("✂️ ⑦ 直接用滑鼠調整 8 個裁切框", "#e74c3c")
 
     src = Image.open(BytesIO(st.session_state.generated_4x2_bytes)).convert("RGBA")
     w, h = src.size
@@ -630,12 +771,14 @@ if st.session_state.generated_4x2_bytes:
     # 不依賴 Canvas 是否成功載入圖片。
     # 固定預覽寬度，避免隨網頁容器無限放大。
     # --------------------------------------------------------
-    st.subheader("🖼️ 原始 4×2 圖片")
+    v10_subsection("🖼️ 原始 4×2 圖片", "#e74c3c")
+    st.markdown('<div class="v10-centered-image">', unsafe_allow_html=True)
     st.image(
-        st.session_state.generated_4x2_bytes,
-        caption=f"原始生成圖：{w} × {h} px",
-        width=900,
+    st.session_state.generated_4x2_bytes,
+    caption=f"原始生成圖：{w} × {h} px",
+    width=900,
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
     st.caption(
         "上方是原始圖片預覽；下方 Canvas 才是可直接拖曳的裁切操作區。"
@@ -664,13 +807,14 @@ if st.session_state.generated_4x2_bytes:
     # 4. main/tab 選擇與裁切在同一頁完成。
     # ============================================================
     st.divider()
-    st.header("⭐ STEP 11B｜選擇 MAIN / TAB")
+    v10_section("⭐ STEP 11B｜選擇 MAIN / TAB", "#9b59b6")
     st.caption("不用重新上傳圖片。調整好定位線後，直接指定哪一格做 MAIN、哪一格做 TAB。")
 
     # The browser editor keeps the guide coordinates in JS. For this first
     # stable version, provide a simple 01～08 selector tied to the standard
     # 4×2 positions. The final crop package still uses the original image.
-    _main_tab_cols = st.columns(4)
+    v10_subsection("📦 MAIN / TAB 選擇與打包", "#9b59b6")
+_main_tab_cols = st.columns(4)
     _main_tab_options = [f"{i:02d}" for i in range(1,9)]
 
     if "step11b1_main" not in st.session_state:
