@@ -1,5 +1,10 @@
 import streamlit as st
 from openai import OpenAI
+try:
+    from streamlit_drawable_canvas import st_canvas
+    CANVAS_AVAILABLE = True
+except ImportError:
+    CANVAS_AVAILABLE = False
 import base64
 from io import BytesIO
 from PIL import Image, ImageDraw
@@ -457,7 +462,7 @@ if st.button(
 if st.session_state.generated_4x2_bytes:
 
     st.divider()
-    st.header("✂️ ⑥ STEP 10C｜手動定位裁切")
+    st.header("✂️ ⑥ STEP 10C｜滑鼠直接調整裁切框")
 
     source = Image.open(
         BytesIO(st.session_state.generated_4x2_bytes)
@@ -467,135 +472,216 @@ if st.session_state.generated_4x2_bytes:
     base_boxes = calculate_boxes(width, height)
 
     st.info(
-        "目前以 4×2 自動格線作為基準。"
-        "每格可以用左／上／右／下數值微調。"
-        "預覽中的彩色虛線就是實際裁切範圍。"
+        "🖱️ 直接點選彩色虛線框後拖曳即可移動；"
+        "拖曳四角控制點即可調整大小。"
+        "不需要逐張開啟設定。"
     )
 
+    if not CANVAS_AVAILABLE:
+        st.error(
+            "目前環境缺少互動裁切元件。請在 requirements.txt 加入："
+            " streamlit-drawable-canvas"
+        )
+        st.stop()
+
     # --------------------------------------------------------
-    # 全圖裁切預覽
+    # 互動裁切畫布
+    # --------------------------------------------------------
+    # 關鍵修正：
+    # 舊版每次 Streamlit rerun 都重新建立 initial_drawing，
+    # 所以滑鼠拖曳後畫面立刻被舊座標覆蓋，看起來就像「不能拖」。
+    #
+    # 本版把 Fabric.js 的目前 JSON 存進 session_state，
+    # 下一次 rerun 直接沿用上一個畫面狀態。
     # --------------------------------------------------------
 
-    preview = source.copy()
-    draw = ImageDraw.Draw(preview)
+    canvas_w = 1000
+    canvas_h = max(1, int(round(height * canvas_w / width)))
 
     line_colors = [
-        (255, 70, 70, 255),
-        (70, 130, 255, 255),
-        (70, 190, 100, 255),
-        (180, 90, 220, 255),
-        (255, 150, 40, 255),
-        (40, 180, 180, 255),
-        (220, 80, 150, 255),
-        (150, 110, 60, 255),
+        "#ff4545", "#4387ff", "#35a85a", "#a34bd6",
+        "#ff922e", "#20a6a6", "#d94b91", "#9a6b36",
     ]
 
-    adjusted_boxes = []
+    scale_x = canvas_w / width
+    scale_y = canvas_h / height
 
-    for i, base_box in enumerate(base_boxes):
-        box = get_adjusted_box(
-            i,
-            base_box,
-            width,
-            height
-        )
-        adjusted_boxes.append(box)
+    if "crop_canvas_version" not in st.session_state:
+        st.session_state.crop_canvas_version = 0
 
-        make_dashed_rectangle(
-            draw,
-            box,
-            line_colors[i],
-            dash=14,
-            width=4
-        )
+    if "crop_canvas_drawing" not in st.session_state:
+        initial_objects = []
 
-    st.image(
-        preview,
-        caption="✂️ 彩色虛線＝實際裁切區域",
-        use_container_width=True
+        for i, (x1, y1, x2, y2) in enumerate(base_boxes):
+            sx = x1 * scale_x
+            sy = y1 * scale_y
+            sw = max(10, (x2 - x1) * scale_x)
+            sh = max(10, (y2 - y1) * scale_y)
+
+            initial_objects.append({
+                "type": "rect",
+                "left": sx,
+                "top": sy,
+                "width": sw,
+                "height": sh,
+                "scaleX": 1,
+                "scaleY": 1,
+                "fill": "rgba(255,255,255,0.01)",
+                "stroke": line_colors[i],
+                "strokeWidth": 4,
+                "strokeDashArray": [12, 8],
+                "selectable": True,
+                "evented": True,
+                "hasControls": True,
+                "hasBorders": True,
+                "lockRotation": True,
+                "lockUniScaling": False,
+                "objectCaching": False,
+                "transparentCorners": False,
+                "cornerSize": 14,
+                "padding": 2,
+                "data_index": i,
+            })
+
+        st.session_state.crop_canvas_drawing = {
+            "version": "4.4.0",
+            "objects": initial_objects
+        }
+
+    st.caption(
+        "🟥01　🟦02　🟩03　🟪04　🟧05　🩵06　🩷07　🟫08"
+        "　｜點一下框線後直接拖曳"
     )
 
-    # --------------------------------------------------------
-    # 個別調整
-    # --------------------------------------------------------
+    canvas_key = f"step10c_direct_crop_canvas_{st.session_state.crop_canvas_version}"
 
-    st.subheader("🛠️ 個別裁切位置微調")
+    canvas_result = st_canvas(
+        fill_color="rgba(0,0,0,0)",
+        stroke_width=3,
+        stroke_color="#ff4545",
+        background_image=source,
+        update_streamlit=True,
+        height=canvas_h,
+        width=canvas_w,
+        drawing_mode="transform",
+        initial_drawing=st.session_state.crop_canvas_drawing,
+        display_toolbar=False,
+        key=canvas_key,
+    )
 
-    for i in range(8):
-
-        with st.expander(
-            f"貼圖 {i + 1:02d}｜{get_sticker_texts()[i] or '未輸入文字'}",
-            expanded=(i == 0)
-        ):
-            st.caption(
-                "數值單位：原始 4×2 圖片 pixel。"
-                "正數代表向內縮。"
-            )
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.number_input(
-                    "← 左",
-                    min_value=0,
-                    max_value=500,
-                    step=1,
-                    key=f"crop_{i}_left"
-                )
-
-            with col2:
-                st.number_input(
-                    "↑ 上",
-                    min_value=0,
-                    max_value=500,
-                    step=1,
-                    key=f"crop_{i}_top"
-                )
-
-            with col3:
-                st.number_input(
-                    "→ 右",
-                    min_value=0,
-                    max_value=500,
-                    step=1,
-                    key=f"crop_{i}_right"
-                )
-
-            with col4:
-                st.number_input(
-                    "↓ 下",
-                    min_value=0,
-                    max_value=500,
-                    step=1,
-                    key=f"crop_{i}_bottom"
-                )
-
-            x1, y1, x2, y2 = get_adjusted_box(
-                i,
-                base_boxes[i],
-                width,
-                height
-            )
-
-            st.caption(
-                f"目前裁切：X {x1}～{x2}｜Y {y1}～{y2}｜"
-                f"{x2-x1} × {y2-y1} px"
-            )
+    # 只要 Fabric.js 回傳有效 JSON，就立刻保存。
+    # 這是讓「拖曳 → Streamlit rerun → 位置仍然保留」的關鍵。
+    if canvas_result.json_data:
+        objects = canvas_result.json_data.get("objects", [])
+        rects = [
+            obj for obj in objects
+            if obj.get("type") == "rect"
+        ]
+        if len(rects) >= 8:
+            st.session_state.crop_canvas_drawing = canvas_result.json_data
 
     # --------------------------------------------------------
-    # 重新產生預覽
+    # 套用 / 重設
     # --------------------------------------------------------
 
-    st.divider()
+    col_a, col_b = st.columns([2, 2])
 
-    if st.button(
-        "🔄 更新彩色虛線預覽",
-        use_container_width=True
-    ):
+    with col_a:
+        apply_crop = st.button(
+            "✅ 套用目前裁切框",
+            type="primary",
+            use_container_width=True
+        )
+
+    with col_b:
+        reset_crop = st.button(
+            "↩️ 恢復 4×2 預設位置",
+            use_container_width=True
+        )
+
+    if reset_crop:
+        st.session_state.pop("crop_canvas_drawing", None)
+        for i in range(8):
+            st.session_state.pop(f"manual_box_{i}", None)
+        st.session_state.crop_canvas_version += 1
         st.rerun()
 
+    if apply_crop:
+        drawing = st.session_state.get("crop_canvas_drawing", {})
+        objects = drawing.get("objects", [])
+        rects = [
+            obj for obj in objects
+            if obj.get("type") == "rect"
+        ]
+
+        if len(rects) < 8:
+            st.warning(
+                f"目前只讀到 {len(rects)} 個裁切框，"
+                "請確認 8 個彩色框都還在畫面上。"
+            )
+        else:
+            converted = []
+
+            for obj in rects[:8]:
+                left = float(obj.get("left", 0))
+                top = float(obj.get("top", 0))
+                obj_w = float(obj.get("width", 0))
+                obj_h = float(obj.get("height", 0))
+                sx = float(obj.get("scaleX", 1))
+                sy = float(obj.get("scaleY", 1))
+
+                box_w = max(4, obj_w * sx)
+                box_h = max(4, obj_h * sy)
+
+                x1 = int(round(left / scale_x))
+                y1 = int(round(top / scale_y))
+                x2 = int(round((left + box_w) / scale_x))
+                y2 = int(round((top + box_h) / scale_y))
+
+                x1 = max(0, min(x1, width - 2))
+                y1 = max(0, min(y1, height - 2))
+                x2 = max(x1 + 2, min(x2, width))
+                y2 = max(y1 + 2, min(y2, height))
+
+                converted.append((x1, y1, x2, y2))
+
+            # 用中心點重新排序，避免拖曳後物件內部順序改變。
+            converted.sort(
+                key=lambda b: (
+                    (b[1] + b[3]) / 2,
+                    (b[0] + b[2]) / 2
+                )
+            )
+
+            for i, box in enumerate(converted[:8]):
+                st.session_state[f"manual_box_{i}"] = box
+
+            st.success("🎉 8 個裁切框已套用！")
+
     # --------------------------------------------------------
-    # 裁切輸出
+    # 目前位置
+    # --------------------------------------------------------
+
+    current_boxes = []
+
+    for i, base_box in enumerate(base_boxes):
+        current_boxes.append(
+            st.session_state.get(
+                f"manual_box_{i}",
+                base_box
+            )
+        )
+
+    with st.expander("📐 查看目前 01～08 裁切座標", expanded=False):
+        for i, box in enumerate(current_boxes):
+            x1, y1, x2, y2 = box
+            st.write(
+                f"{i+1:02d}｜X {x1}～{x2}｜Y {y1}～{y2}｜"
+                f"{x2-x1} × {y2-y1}px"
+            )
+
+    # --------------------------------------------------------
+    # 執行裁切
     # --------------------------------------------------------
 
     st.subheader("📦 輸出 01～08")
@@ -607,46 +693,25 @@ if st.session_state.generated_4x2_bytes:
     ):
         output_files = []
 
-        for i in range(8):
-
-            x1, y1, x2, y2 = get_adjusted_box(
-                i,
-                base_boxes[i],
-                width,
-                height
-            )
-
-            crop = source.crop(
-                (x1, y1, x2, y2)
-            )
-
+        for i, (x1, y1, x2, y2) in enumerate(current_boxes):
+            crop = source.crop((x1, y1, x2, y2))
             final_image = fit_to_line_canvas(crop)
 
             buffer = BytesIO()
-            final_image.save(
-                buffer,
-                format="PNG"
-            )
+            final_image.save(buffer, format="PNG")
 
             output_files.append(
-                (
-                    f"{i + 1:02d}.png",
-                    buffer.getvalue()
-                )
+                (f"{i + 1:02d}.png", buffer.getvalue())
             )
 
         st.session_state["cropped_files"] = output_files
-
-        st.success(
-            "🎉 裁切完成！已產生 01～08 共 8 張 PNG。"
-        )
+        st.success("🎉 裁切完成！已產生 01～08 共 8 張 PNG。")
 
     # --------------------------------------------------------
     # 輸出結果
     # --------------------------------------------------------
 
     if st.session_state.get("cropped_files"):
-
         st.subheader("🖼️ 裁切結果")
 
         result_cols = st.columns(4)
@@ -655,10 +720,11 @@ if st.session_state.generated_4x2_bytes:
             st.session_state["cropped_files"]
         ):
             with result_cols[i % 4]:
+                # 固定 CSS 寬度；不使用 use_container_width。
                 st.image(
                     data,
                     caption=filename,
-                    use_container_width=True
+                    width=260
                 )
 
                 st.download_button(
