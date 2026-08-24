@@ -418,6 +418,8 @@ text_style = st.selectbox(
 )
 
 _selected_font = st.session_state.get("v8_selected_font", None)
+st.markdown('<div id="v10-font-result-anchor"></div>', unsafe_allow_html=True)
+
 if _selected_font:
     st.success(f"🎨 已選擇 125 字型：{_selected_font:03d}｜{V8_TEXT_EFFECT_CATALOG[_selected_font]}")
 else:
@@ -461,6 +463,9 @@ if st.session_state.v10_font_gallery_open:
 
                 # 核心：下一次 rerun 時完全不渲染 125 總覽。
                 st.session_state.v10_font_gallery_open = False
+
+                # 告訴下一次 rerun：完成後捲回「已選字型」位置。
+                st.session_state.v10_scroll_to_font_result = True
 
                 st.rerun()
 
