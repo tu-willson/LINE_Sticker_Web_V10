@@ -301,6 +301,63 @@ if st.session_state.generated_4x2_bytes:
         height=760,
         scrolling=False,
     )
+
+
+    # ============================================================
+    # STEP 11A：裁切結果總覽
+    # 不修改 V10 STEP 10C.8 的生成、透明、定位裁切核心。
+    # ============================================================
+    st.divider()
+    st.header("🖼️ STEP 11A｜裁切結果總覽")
+    st.caption("可將剛剛下載的 01～08 PNG 一次拖曳回來，確認每張尺寸與透明 Alpha。")
+
+    result_files = st.file_uploader(
+        "📥 上傳裁切後的 01～08 PNG",
+        type=["png"],
+        accept_multiple_files=True,
+        key="step11a_result_upload",
+    )
+
+    if result_files:
+        result_files = sorted(result_files, key=lambda f: f.name.lower())
+        st.success(f"🎉 已載入 {len(result_files)} 張裁切結果")
+
+        cols = st.columns(4)
+        rows = []
+
+        for i, f in enumerate(result_files):
+            try:
+                im = Image.open(BytesIO(f.getvalue())).convert("RGBA")
+                alpha = im.getchannel("A")
+                amin, amax = alpha.getextrema()
+                hist = alpha.histogram()
+                transparent_px = int(hist[0])
+                total_px = im.width * im.height
+                pct = transparent_px / total_px * 100 if total_px else 0
+
+                rows.append({
+                    "檔案": f.name,
+                    "尺寸": f"{im.width}×{im.height}",
+                    "模式": im.mode,
+                    "Alpha": f"{amin}～{amax}",
+                    "透明像素": f"{pct:.2f}%",
+                    "判定": "✅ 真透明" if transparent_px > 0 else "❌ 無透明"
+                })
+
+                with cols[i % 4]:
+                    st.image(im, caption=f.name, use_container_width=True)
+                    st.caption(f"{im.width}×{im.height}｜透明 {pct:.2f}%")
+                    if transparent_px > 0:
+                        st.success("透明 PNG ✅", icon="🟢")
+                    else:
+                        st.error("無透明像素 ❌", icon="🔴")
+
+            except Exception as e:
+                with cols[i % 4]:
+                    st.error(f"{f.name}\\n讀取失敗：{e}")
+
+        st.markdown("### 📋 透明檢查")
+        st.dataframe(rows, use_container_width=True, hide_index=True)
     st.caption("V10 STEP 10C.6｜定位點裁切＋V8 邊界連通背景透明化；不改動原本定位點系統。")
 st.divider()
 st.caption("V10 STEP 10C.5｜定位點裁切版")
