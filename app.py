@@ -6,6 +6,45 @@ from io import BytesIO
 from PIL import Image
 import random
 from pathlib import Path
+import json
+
+V10_PRESET_FILE = Path(__file__).with_name("V10_user_presets.json")
+
+def _load_v10_presets():
+    d={"style_custom":[""]*10,
+       "style_custom_names":[f"使用者自定{i}" for i in range(1,11)],
+       "character_custom":["","",""],
+       "character_enabled":[False,False,False]}
+    try:
+        if V10_PRESET_FILE.exists():
+            x=json.loads(V10_PRESET_FILE.read_text(encoding="utf-8"))
+            d.update(x)
+    except Exception:
+        pass
+    return d
+
+def _save_v10_presets():
+    d={
+        "style_custom":[st.session_state.get(f"v10_style_custom_{i}","") for i in range(1,11)],
+        "style_custom_names":[st.session_state.get(f"v10_style_name_{i}",f"使用者自定{i}") for i in range(1,11)],
+        "character_custom":[st.session_state.get(f"v10_character_custom_{i}","") for i in range(1,4)],
+        "character_enabled":[bool(st.session_state.get(f"v10_character_enabled_{i}",False)) for i in range(1,4)],
+    }
+    try:
+        tmp=V10_PRESET_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(d,ensure_ascii=False,indent=2),encoding="utf-8")
+        tmp.replace(V10_PRESET_FILE)
+        return True
+    except Exception:
+        return False
+
+_pd=_load_v10_presets()
+for _i in range(1,11):
+    st.session_state.setdefault(f"v10_style_custom_{_i}", (_pd.get("style_custom") or [""]*10)[_i-1])
+    st.session_state.setdefault(f"v10_style_name_{_i}", (_pd.get("style_custom_names") or [f"使用者自定{i}" for i in range(1,11)])[_i-1])
+for _i in range(1,4):
+    st.session_state.setdefault(f"v10_character_custom_{_i}", (_pd.get("character_custom") or ["","",""])[_i-1])
+    st.session_state.setdefault(f"v10_character_enabled_{_i}", (_pd.get("character_enabled") or [False,False,False])[_i-1])
 import streamlit.components.v1 as components
 
 # ============================================================
@@ -129,6 +168,11 @@ def build_prompt(style, custom_style, selected_character, custom_character,
 # ------------------------------------------------------------
 # UI
 # ------------------------------------------------------------
+st.markdown("""<style>
+.v10-rainbow-title{padding:8px 14px;border-radius:12px;margin:8px 0 12px;font-weight:700;background:linear-gradient(90deg,#fff1f2,#fff7ed,#fefce8,#f0fdf4,#eff6ff,#f5f3ff);}
+.v10-soft-box{padding:8px 12px;border-radius:10px;background:#fafafa;border:1px solid #e5e7eb;}
+</style>""",unsafe_allow_html=True)
+
 st.title("🎨 LINE 貼圖創作工作室")
 st.caption("V10 STEP 10C｜原生 Canvas 直接拖曳裁切")
 st.divider()
@@ -150,20 +194,51 @@ if uploaded:
         st.code(str(e))
 
 st.divider()
-st.header("🎨 ② 貼圖風格（V8完整風格庫）")
-style_options = ["↓ 請選擇風格"] + [x for x in V8_STYLES if not x.startswith("⭐ 自訂")]
-style = st.selectbox("風格", style_options, key="v8_style")
-custom_style = st.text_area("⭐ 我的自定風格", height=90, key="v8_custom_style")
+st.header("🎨 ② 貼圖風格")
+st.caption("🌈 V8 完整風格庫＋10 組可儲存的使用者自定風格")
 
-with st.expander("📚 查看 V8 全部風格", expanded=False):
+style_options=["↓ 請選擇風格"]+[x for x in V8_STYLES if not x.startswith("⭐ 自訂")]
+style=st.selectbox("🌈 V8 風格",style_options,key="v8_style")
+
+with st.expander("💾 使用者自定風格 1～10",expanded=False):
+    for _i in range(1,11):
+        _a,_b=st.columns([1,4])
+        with _a:
+            st.text_input(f"名稱 {_i:02d}",key=f"v10_style_name_{_i}")
+        with _b:
+            st.text_area(f"自定義風格 {_i:02d}",key=f"v10_style_custom_{_i}",height=65)
+    if st.button("💾 儲存 10 組自定風格",key="v10_save_styles",use_container_width=True):
+        st.success("✅ 10 組自定風格已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
+
+_saved_style_choices=[]; _saved_style_map={}
+for _i in range(1,11):
+    _sv=st.session_state.get(f"v10_style_custom_{_i}","").strip()
+    if _sv:
+        _label=f"💾 {st.session_state.get(f'v10_style_name_{_i}',f'使用者自定{_i}')}"
+        _saved_style_choices.append(_label); _saved_style_map[_label]=_sv
+_saved=st.selectbox("💾 套用已儲存自定風格",["不套用"]+_saved_style_choices,key="v10_saved_style_choice")
+if _saved!="不套用":
+    style=_saved_style_map[_saved]
+
+custom_style=st.text_area("⭐ 本次額外自定風格（不覆蓋10組）",height=80,key="v10_custom_style_current")
+with st.expander("📚 查看 V8 全部風格",expanded=False):
     st.write("、".join(style_options[1:]))
 
 st.divider()
 st.header("👤 ③ 人物與畫面特色")
-selected_character = st.multiselect("可以複選", CHARACTER_OPTIONS)
-custom_character = st.text_area("📝 自定義人物／場景需求", height=110)
+st.caption("可複選；以下 3 組自定義人物／場景需求，只有打勾才會啟用。")
+selected_character=st.multiselect("🎯 V8 人物／畫面特色（可複選）",CHARACTER_OPTIONS,key="v10_character_options")
+for _i in range(1,4):
+    _c1,_c2=st.columns([1,8])
+    with _c1:
+        st.checkbox("啟用",key=f"v10_character_enabled_{_i}")
+    with _c2:
+        st.text_area(f"自定義人物／場景需求 {_i}",key=f"v10_character_custom_{_i}",height=70)
+_custom_character_values=[st.session_state.get(f"v10_character_custom_{_i}","").strip() for _i in range(1,4) if st.session_state.get(f"v10_character_enabled_{_i}",False)]
+custom_character="\n".join(_custom_character_values)
+if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_container_width=True):
+    st.success("✅ 3 組人物／場景設定已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
 
-st.divider()
 st.header("💬 ④ 01～08 貼圖文字（V8完整語詞庫）")
 
 # V8 全部隨機用語池。
@@ -245,15 +320,16 @@ else:
     st.info("尚未指定 125 種字型；可從下方總覽選用。")
 
 with st.expander("📚 125 種帶圖字型總覽", expanded=False):
-    _font_cols = st.columns(5)
+    st.caption("🖱️ 點選字型後會立即重新整理，總覽自動收起。")
+    _font_cols=st.columns(5)
     for _i in range(1,126):
-        _p = V8_FONT_PREVIEW_DIR / f"{_i:03d}.jpg"
-        if not _p.exists():
-            continue
+        _p=V8_FONT_PREVIEW_DIR/f"{_i:03d}.jpg"
+        if not _p.exists(): continue
         with _font_cols[(_i-1)%5]:
-            st.image(str(_p), use_container_width=True)
-            if st.button(f"選用 {_i:03d}", key=f"font_pick_{_i}", use_container_width=True):
-                st.session_state.v8_selected_font = _i
+            st.image(str(_p),use_container_width=True)
+            st.caption(f"{_i:03d}｜{V8_TEXT_EFFECT_CATALOG[_i]}")
+            if st.button(f"選用 {_i:03d}",key=f"font_pick_{_i}",use_container_width=True):
+                st.session_state.v8_selected_font=_i
                 st.rerun()
 
 with st.expander("🔎 已選字型大圖", expanded=False):
