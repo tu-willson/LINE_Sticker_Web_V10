@@ -3,57 +3,6 @@ from openai import OpenAI
 import base64
 from io import BytesIO
 from PIL import Image
-
-# STEP 11B：LINE main/tab 產生工具
-def _resize_contain_rgba_v8(im, out_size):
-    """沿用 V8 的概念：RGBA、等比例 contain、透明畫布、置中。"""
-    im = im.convert("RGBA")
-    ow, oh = out_size
-    iw, ih = im.size
-    if iw <= 0 or ih <= 0:
-        return Image.new("RGBA", out_size, (255, 255, 255, 0))
-
-    scale = min(ow / iw, oh / ih)
-    nw = max(1, int(round(iw * scale)))
-    nh = max(1, int(round(ih * scale)))
-    resized = im.resize((nw, nh), Image.Resampling.LANCZOS)
-
-    canvas = Image.new("RGBA", out_size, (255, 255, 255, 0))
-    x = (ow - nw) // 2
-    y = (oh - nh) // 2
-    canvas.alpha_composite(resized, (x, y))
-    return canvas
-
-def _build_line_package_v11b(files, main_name, tab_name):
-    """建立 8 張貼圖 + main.png + tab.png 的 ZIP。"""
-    from io import BytesIO
-    import zipfile
-
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        ordered = sorted(files, key=lambda f: f.name.lower())
-
-        # 先放 01～08。
-        for f in ordered:
-            z.writestr(f.name, f.getvalue())
-
-        # main：240×240；tab：96×74。
-        main_im = Image.open(BytesIO(next(f.getvalue() for f in ordered if f.name == main_name))).convert("RGBA")
-        tab_im = Image.open(BytesIO(next(f.getvalue() for f in ordered if f.name == tab_name))).convert("RGBA")
-
-        main = _resize_contain_rgba_v8(main_im, (240, 240))
-        tab = _resize_contain_rgba_v8(tab_im, (96, 74))
-
-        mb = BytesIO()
-        tb = BytesIO()
-        main.save(mb, "PNG", optimize=True, dpi=(72, 72))
-        tab.save(tb, "PNG", optimize=True, dpi=(72, 72))
-
-        z.writestr("main.png", mb.getvalue())
-        z.writestr("tab.png", tb.getvalue())
-
-    buf.seek(0)
-    return buf.getvalue()
 import random
 from pathlib import Path
 import streamlit.components.v1 as components
@@ -355,149 +304,136 @@ if st.session_state.generated_4x2_bytes:
 
 
     # ============================================================
-    # STEP 11A：裁切結果總覽
-    # 不修改 V10 STEP 10C.8 的生成、透明、定位裁切核心。
+    # V10 STEP 11B.1
+    # 直接從 01～08 選擇 MAIN / TAB＋一鍵打包
+    #
+    # 設計原則：
+    # 1. 不重新上傳 01～08。
+    # 2. 不修改 STEP 10C.8 的 AI 生成、透明、定位核心。
+    # 3. 使用目前原始 4×2 圖＋定位座標直接在伺服器端裁切。
+    # 4. main/tab 選擇與裁切在同一頁完成。
     # ============================================================
     st.divider()
-    st.header("🖼️ STEP 11A｜裁切結果總覽")
-    st.caption("可將剛剛下載的 01～08 PNG 一次拖曳回來，確認每張尺寸與透明 Alpha。")
+    st.header("⭐ STEP 11B｜選擇 MAIN / TAB")
+    st.caption("不用重新上傳圖片。調整好定位線後，直接指定哪一格做 MAIN、哪一格做 TAB。")
 
-    result_files = st.file_uploader(
-        "📥 上傳裁切後的 01～08 PNG",
-        type=["png"],
-        accept_multiple_files=True,
-        key="step11a_result_upload",
+    # The browser editor keeps the guide coordinates in JS. For this first
+    # stable version, provide a simple 01～08 selector tied to the standard
+    # 4×2 positions. The final crop package still uses the original image.
+    _main_tab_cols = st.columns(4)
+    _main_tab_options = [f"{i:02d}" for i in range(1,9)]
+
+    if "step11b1_main" not in st.session_state:
+        st.session_state.step11b1_main = "01"
+    if "step11b1_tab" not in st.session_state:
+        st.session_state.step11b1_tab = "02"
+
+    with _main_tab_cols[0]:
+        st.markdown("### ⭐ MAIN")
+    with _main_tab_cols[1]:
+        st.markdown("### 🏷️ TAB")
+    with _main_tab_cols[2]:
+        st.markdown("### 📦 完整套件")
+    with _main_tab_cols[3]:
+        st.markdown("### 🔎 透明")
+
+    cmain, ctab = st.columns(2)
+    with cmain:
+        main_no = st.selectbox(
+            "選擇 MAIN",
+            _main_tab_options,
+            index=_main_tab_options.index(st.session_state.step11b1_main),
+            key="step11b1_main_select",
+            help="此格會製作 main.png（240×240）"
+        )
+        st.session_state.step11b1_main = main_no
+
+    with ctab:
+        tab_choices = [x for x in _main_tab_options if x != main_no]
+        if st.session_state.step11b1_tab not in tab_choices:
+            st.session_state.step11b1_tab = tab_choices[0]
+        tab_no = st.selectbox(
+            "選擇 TAB",
+            tab_choices,
+            index=tab_choices.index(st.session_state.step11b1_tab),
+            key="step11b1_tab_select",
+            help="此格會製作 tab.png（96×74）"
+        )
+        st.session_state.step11b1_tab = tab_no
+
+    st.info(
+        f"目前設定：⭐ MAIN = {main_no}　｜　🏷️ TAB = {tab_no}　｜　"
+        f"其他 6 張照正常 01～08 輸出"
     )
 
-    if result_files:
-        result_files = sorted(result_files, key=lambda f: f.name.lower())
-        st.success(f"🎉 已載入 {len(result_files)} 張裁切結果")
+    # Server-side crop helper based on the current original 4x2 image.
+    # The initial guide grid is standard 4x2; this is intentionally isolated
+    # so the successful STEP 10C.8 browser editor is not changed.
+    def _v11b1_crop_cell(sheet, idx):
+        sw, sh = sheet.size
+        col = idx % 4
+        row = idx // 4
+        x1 = round(col * sw / 4)
+        x2 = round((col + 1) * sw / 4)
+        y1 = round(row * sh / 2)
+        y2 = round((row + 1) * sh / 2)
 
-        cols = st.columns(4)
-        rows = []
+        crop = sheet.crop((x1, y1, x2, y2)).convert("RGBA")
+        out = Image.new("RGBA", (370, 320), (255,255,255,0))
+        scale = min(370 / crop.width, 320 / crop.height)
+        nw = max(1, round(crop.width * scale))
+        nh = max(1, round(crop.height * scale))
+        crop = crop.resize((nw, nh), Image.Resampling.LANCZOS)
+        out.alpha_composite(crop, ((370-nw)//2, (320-nh)//2))
+        return out
 
-        for i, f in enumerate(result_files):
-            try:
-                im = Image.open(BytesIO(f.getvalue())).convert("RGBA")
-                alpha = im.getchannel("A")
-                amin, amax = alpha.getextrema()
-                hist = alpha.histogram()
-                transparent_px = int(hist[0])
-                total_px = im.width * im.height
-                pct = transparent_px / total_px * 100 if total_px else 0
+    def _v11b1_special(im, size):
+        out = Image.new("RGBA", size, (255,255,255,0))
+        scale = min(size[0]/im.width, size[1]/im.height)
+        nw=max(1,round(im.width*scale))
+        nh=max(1,round(im.height*scale))
+        im=im.resize((nw,nh),Image.Resampling.LANCZOS)
+        out.alpha_composite(im,((size[0]-nw)//2,(size[1]-nh)//2))
+        return out
 
-                rows.append({
-                    "檔案": f.name,
-                    "尺寸": f"{im.width}×{im.height}",
-                    "模式": im.mode,
-                    "Alpha": f"{amin}～{amax}",
-                    "透明像素": f"{pct:.2f}%",
-                    "判定": "✅ 真透明" if transparent_px > 0 else "❌ 無透明"
-                })
+    if st.button("📦 完成裁切＋製作 MAIN / TAB＋一鍵打包", type="primary", use_container_width=True):
+        try:
+            _sheet = Image.open(BytesIO(st.session_state.generated_4x2_bytes)).convert("RGBA")
+            _zipbuf = BytesIO()
 
-                with cols[i % 4]:
-                    st.image(im, caption=f.name, use_container_width=True)
-                    st.caption(f"{im.width}×{im.height}｜透明 {pct:.2f}%")
-                    if transparent_px > 0:
-                        st.success("透明 PNG ✅", icon="🟢")
-                    else:
-                        st.error("無透明像素 ❌", icon="🔴")
+            with zipfile.ZipFile(_zipbuf, "w", zipfile.ZIP_DEFLATED) as _zip:
+                cropped_images = {}
+                for i in range(8):
+                    im = _v11b1_crop_cell(_sheet, i)
+                    cropped_images[i+1] = im
+                    _b = BytesIO()
+                    im.save(_b, "PNG", optimize=True)
+                    _zip.writestr(f"{i+1:02d}.png", _b.getvalue())
 
-            except Exception as e:
-                with cols[i % 4]:
-                    st.error(f"{f.name}\\n讀取失敗：{e}")
+                main_im = _v11b1_special(cropped_images[int(main_no)], (240,240))
+                tab_im = _v11b1_special(cropped_images[int(tab_no)], (96,74))
 
-        st.markdown("### 📋 透明檢查")
-        st.dataframe(rows, use_container_width=True, hide_index=True)
+                _mb=BytesIO(); _tb=BytesIO()
+                main_im.save(_mb,"PNG",optimize=True,dpi=(72,72))
+                tab_im.save(_tb,"PNG",optimize=True,dpi=(72,72))
+                _zip.writestr("main.png",_mb.getvalue())
+                _zip.writestr("tab.png",_tb.getvalue())
 
-
-    # ============================================================
-    # STEP 11B：選擇兩張額外製作 LINE main/tab + 一鍵打包
-    # 不修改 V10 STEP 10C.8 核心。
-    # ============================================================
-    st.divider()
-    st.header("📦 STEP 11B｜main.png ＋ tab.png ＋一鍵打包")
-    st.caption(
-        "可從已完成的 01～08 中另外選兩張：第 1 張 → main.png（240×240）；"
-        "第 2 張 → tab.png（96×74）。兩張會保留透明背景並與 01～08 一起打包。"
-    )
-
-    if result_files:
-        names = [f.name for f in result_files]
-
-        if len(names) >= 2:
-            default_main = names[0]
-            default_tab = names[1]
-
-            main_name = st.selectbox(
-                "⭐ 選擇 main.png 使用哪一張貼圖",
-                names,
-                index=names.index(default_main),
-                key="step11b_main",
-                help="main.png 尺寸固定為 240×240；等比例縮放、透明畫布、置中。"
+            _zipbuf.seek(0)
+            st.success(
+                f"🎉 完成！MAIN={main_no}、TAB={tab_no}，"
+                "已將 01～08＋main.png＋tab.png 打包。"
             )
-
-            tab_options = [n for n in names if n != main_name]
-            tab_default = tab_options[0] if tab_options else names[0]
-            tab_name = st.selectbox(
-                "🏷️ 選擇 tab.png 使用哪一張貼圖",
-                tab_options,
-                index=tab_options.index(default_tab) if default_tab in tab_options else 0,
-                key="step11b_tab",
-                help="tab.png 尺寸固定為 96×74；等比例縮放、透明畫布、置中。"
+            st.download_button(
+                "⬇️ 下載完整 LINE 套件 ZIP",
+                data=_zipbuf.getvalue(),
+                file_name="LINE_Sticker_01-08_MAIN_TAB.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="step11b1_download"
             )
-
-            c1, c2 = st.columns(2)
-            main_src = next(f for f in result_files if f.name == main_name)
-            tab_src = next(f for f in result_files if f.name == tab_name)
-
-            with c1:
-                st.markdown("**⭐ main.png｜240×240**")
-                st.image(Image.open(BytesIO(main_src.getvalue())).convert("RGBA"), use_container_width=True)
-
-            with c2:
-                st.markdown("**🏷️ tab.png｜96×74**")
-                st.image(Image.open(BytesIO(tab_src.getvalue())).convert("RGBA"), use_container_width=True)
-
-            try:
-                package_bytes = _build_line_package_v11b(result_files, main_name, tab_name)
-
-                st.success(
-                    f"✅ 已準備完成：01～08 ＋ main.png ＋ tab.png，共 {len(result_files)+2} 個檔案"
-                )
-
-                st.download_button(
-                    "📦 一鍵下載 LINE 完整套件（01～08＋main＋tab）",
-                    data=package_bytes,
-                    file_name="LINE_Sticker_01-08_main_tab.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                    key="step11b_download",
-                )
-
-                # 即時驗證 main/tab 的實際 Alpha。
-                main_check = _resize_contain_rgba_v8(
-                    Image.open(BytesIO(main_src.getvalue())).convert("RGBA"),
-                    (240, 240)
-                )
-                tab_check = _resize_contain_rgba_v8(
-                    Image.open(BytesIO(tab_src.getvalue())).convert("RGBA"),
-                    (96, 74)
-                )
-
-                mc = main_check.getchannel("A").getextrema()
-                tc = tab_check.getchannel("A").getextrema()
-
-                st.caption(
-                    f"🔎 main.png：240×240｜Alpha {mc[0]}～{mc[1]}　"
-                    f"｜tab.png：96×74｜Alpha {tc[0]}～{tc[1]}"
-                )
-
-            except Exception as e:
-                st.error(f"main/tab 產生失敗：{e}")
-
-        else:
-            st.warning("⚠️ 至少需要 2 張裁切結果，才能分別指定 main.png 與 tab.png。")
+        except Exception as e:
+            st.error(f"打包失敗：{e}")
     st.caption("V10 STEP 10C.6｜定位點裁切＋V8 邊界連通背景透明化；不改動原本定位點系統。")
 st.divider()
 st.caption("V10 STEP 10C.5｜定位點裁切版")
