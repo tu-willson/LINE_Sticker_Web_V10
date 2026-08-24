@@ -302,7 +302,7 @@ st.caption("🎲 V8 原有語詞池＋你的專屬隨機語詞池。可新增、
 _pool_names=list(V8_RANDOM_POOLS.keys())
 _pool_choice=st.selectbox(
     "🎲 隨機用語池",
-    ["全部 V8 語詞"]+_pool_names+["⭐ 我的自定義語詞池"],
+    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池"] + _pool_names + ["全部 V8 語詞"],
     key="v10_phrase_pool_choice",
 )
 
@@ -350,7 +350,10 @@ if _pool_choice=="⭐ 我的自定義語詞池":
 
     _active_pool=V10_CUSTOM_PHRASE_POOL
 else:
-    if _pool_choice=="全部 V8 語詞":
+    if _pool_choice=="↓ 請選擇語詞池":
+        _active_pool=[]
+        st.info("👆 請先選擇一個語詞池。")
+    elif _pool_choice=="全部 V8 語詞":
         _active_pool=[x for vals in V8_RANDOM_POOLS.values() for x in vals]
     else:
         _active_pool=V8_RANDOM_POOLS.get(_pool_choice,[])
@@ -371,7 +374,7 @@ else:
         st.write("V8 原有分類")
 
 # V8 原本的「分類→語句→指定格」功能保留。
-if _pool_choice!="⭐ 我的自定義語詞池":
+if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"):
     p1,p2,p3=st.columns([1.2,2.4,0.8])
     with p1:
         _common_cat=st.selectbox("常用語分類",_pool_names,key="v8_common_cat")
