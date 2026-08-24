@@ -231,12 +231,29 @@ if st.session_state.generated_4x2_bytes:
         "拖曳四邊：單方向調整。8 個框同時顯示，不需要逐張打開。"
     )
 
+    # --------------------------------------------------------
+    # 明確顯示原始 4×2 圖
+    # 不依賴 Canvas 是否成功載入圖片。
+    # 固定預覽寬度，避免隨網頁容器無限放大。
+    # --------------------------------------------------------
+    st.subheader("🖼️ 原始 4×2 圖片")
+    st.image(
+        st.session_state.generated_4x2_bytes,
+        caption=f"原始生成圖：{w} × {h} px",
+        width=900,
+    )
+
+    st.caption(
+        "上方是原始圖片預覽；下方 Canvas 才是可直接拖曳的裁切操作區。"
+    )
+
     component_dir = Path(__file__).parent / "crop_editor"
     crop_editor = components.declare_component(
         "line_sticker_native_crop_editor",
         path=str(component_dir),
     )
 
+    st.subheader("🖱️ 直接拖曳裁切框")
     result = crop_editor(
         image_b64=base64.b64encode(st.session_state.generated_4x2_bytes).decode("ascii"),
         image_width=w,
