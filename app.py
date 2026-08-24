@@ -419,13 +419,39 @@ text_style = st.selectbox(
 
 _selected_font = st.session_state.get("v8_selected_font", None)
 st.markdown('<div id="v10-font-result-anchor"></div>', unsafe_allow_html=True)
-
 if _selected_font:
     st.success(f"🎨 已選擇 125 字型：{_selected_font:03d}｜{V8_TEXT_EFFECT_CATALOG[_selected_font]}")
 else:
     st.info("尚未指定 125 種字型；可從下方總覽選用。")
 
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+# 選字後真正跳回「已選字型」位置
+# 使用 Streamlit Components v2 的原生 DOM JavaScript。
+# ------------------------------------------------------------
+if st.session_state.pop("v10_scroll_to_font_result", False):
+    import streamlit.components.v2 as components
+    _v10_font_scroll = components.component(
+        "v10_font_scroll",
+        html="<span aria-hidden='true'></span>",
+        js="""
+        export default function(component) {
+            const anchor = document.querySelector("#v10-font-result-anchor");
+            if (!anchor) return;
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    anchor.scrollIntoView({
+                        behavior: "instant",
+                        block: "start"
+                    });
+                });
+            });
+        }
+        """,
+        isolate_styles=False,
+    )
+    _v10_font_scroll(key="font_scroll_once")
+
 # 125 種帶圖字型總覽
 # 選中後「整個區塊不再渲染」，因此會真正收起，而不是只抖動。
 # ------------------------------------------------------------
@@ -460,12 +486,10 @@ if st.session_state.v10_font_gallery_open:
                 use_container_width=True,
             ):
                 st.session_state.v8_selected_font = _i
+                st.session_state.v10_scroll_to_font_result = True
 
                 # 核心：下一次 rerun 時完全不渲染 125 總覽。
                 st.session_state.v10_font_gallery_open = False
-
-                # 告訴下一次 rerun：完成後捲回「已選字型」位置。
-                st.session_state.v10_scroll_to_font_result = True
 
                 st.rerun()
 
