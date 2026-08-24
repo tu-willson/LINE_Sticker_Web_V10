@@ -8,16 +8,38 @@ import random
 from pathlib import Path
 import json
 
-V10_PRESET_FILE = Path(__file__).with_name("V10_user_presets.json")
+# ------------------------------------------------------------
+# V10 使用者資料本／獨立儲存區
+# 不放進 app.py 內；只要這些 JSON 檔仍在專案中，更新 app.py 不會清空。
+# 先讀取新的 v10_data/，若尚未建立則相容讀取舊版根目錄 JSON。
+# ------------------------------------------------------------
+V10_DATA_DIR = Path(__file__).with_name("v10_data")
+V10_DATA_DIR.mkdir(exist_ok=True)
 
-V10_CUSTOM_PHRASE_POOL_FILE = Path(__file__).with_name("V10_custom_phrase_pool.json")
+V10_PRESET_FILE = V10_DATA_DIR / "V10_user_presets.json"
+V10_CUSTOM_PHRASE_POOL_FILE = V10_DATA_DIR / "V10_custom_phrase_pool.json"
+
+V10_LEGACY_PRESET_FILE = Path(__file__).with_name("V10_user_presets.json")
+V10_LEGACY_PHRASE_POOL_FILE = Path(__file__).with_name("V10_custom_phrase_pool.json")
 
 def _load_v10_phrase_pool():
     try:
-        if V10_CUSTOM_PHRASE_POOL_FILE.exists():
-            d=json.loads(V10_CUSTOM_PHRASE_POOL_FILE.read_text(encoding="utf-8"))
+        source = V10_CUSTOM_PHRASE_POOL_FILE
+        if not source.exists() and V10_LEGACY_PHRASE_POOL_FILE.exists():
+            source = V10_LEGACY_PHRASE_POOL_FILE
+        if source.exists():
+            d=json.loads(source.read_text(encoding="utf-8"))
             if isinstance(d, list):
-                return [str(x).strip() for x in d if str(x).strip()]
+                values=[str(x).strip() for x in d if str(x).strip()]
+                # 首次升級時搬到獨立資料夾。
+                if source != V10_CUSTOM_PHRASE_POOL_FILE:
+                    try:
+                        V10_CUSTOM_PHRASE_POOL_FILE.write_text(
+                            json.dumps(values,ensure_ascii=False,indent=2),encoding="utf-8"
+                        )
+                    except Exception:
+                        pass
+                return values
     except Exception:
         pass
     return []
@@ -41,9 +63,20 @@ def _load_v10_presets():
        "character_custom":["","",""],
        "character_enabled":[False,False,False]}
     try:
-        if V10_PRESET_FILE.exists():
-            x=json.loads(V10_PRESET_FILE.read_text(encoding="utf-8"))
+        source = V10_PRESET_FILE
+        if not source.exists() and V10_LEGACY_PRESET_FILE.exists():
+            source = V10_LEGACY_PRESET_FILE
+        if source.exists():
+            x=json.loads(source.read_text(encoding="utf-8"))
             d.update(x)
+            # 首次升級時搬到獨立資料夾。
+            if source != V10_PRESET_FILE:
+                try:
+                    V10_PRESET_FILE.write_text(
+                        json.dumps(d,ensure_ascii=False,indent=2),encoding="utf-8"
+                    )
+                except Exception:
+                    pass
     except Exception:
         pass
     return d
@@ -144,6 +177,24 @@ st.markdown("""
   font-weight:900;
   letter-spacing:.03em;
 }
+.v10-transparent-box{
+  width:min(760px,100%);
+  margin:0 auto 1rem;
+  padding:.45rem .75rem;
+  text-align:center;
+}
+.v10-transparent-box div[data-testid="stCheckbox"]{
+  width:100% !important;
+  text-align:center !important;
+}
+.v10-transparent-box label{
+  font-size:1.25rem !important;
+  font-weight:800 !important;
+}
+div[data-testid="stCheckbox"] label{
+  font-size:1.12rem !important;
+  font-weight:700 !important;
+}
 .v10-subsection{
   width:min(900px,100%);
   margin:1.25rem auto .75rem;
@@ -151,7 +202,7 @@ st.markdown("""
   border-left:6px solid var(--accent);
   border-radius:8px;
   background:color-mix(in srgb,var(--accent) 10%, transparent);
-  font-size:1.2rem;
+  font-size:1.28rem;
   font-weight:800;
   text-align:left;
 }
@@ -358,7 +409,7 @@ st.divider()
 V8_STYLE_CUSTOM_OPTION = "⭐ 自定義風格"
 
 v10_section("🎨 ② 貼圖風格", "#ff9f43")
-st.caption("🌈 預設 V8 風格與「自定義風格」二選一。選擇自定義後，才會出現可套用的 10 組儲存風格。")
+st.caption("🌈 預設風格與「自定義風格」二選一。選擇自定義後，才會出現可套用的 10 組儲存風格。")
 
 # 自定義風格放在第 2 個位置，方便快速選擇。
 _v8_style_items=[x for x in V8_STYLES if not x.startswith("⭐ 自訂")]
@@ -410,17 +461,17 @@ if style_mode=="⭐ 自定義風格":
             else:
                 st.error("❌ 儲存失敗")
 
-    st.warning("ℹ️ 目前只使用「自定義風格」，不會同時套用其他 V8 預設風格。")
+    st.warning("ℹ️ 目前只使用「自定義風格」，不會同時套用其他 預設風格。")
 else:
     style=style_mode
     custom_style=""
 
-with st.expander("📚 查看 V8 全部風格",expanded=False):
+with st.expander("📚 查看全部預設風格",expanded=False):
     st.write("、".join(_style_options[2:]))
 
 v10_section("👤 ③ 人物與畫面特色", "#2ecc71")
 st.caption("可複選；以下 3 組自定義人物／場景需求，只有打勾才會啟用。")
-selected_character=st.multiselect("🎯 V8 人物／畫面特色（可複選）",CHARACTER_OPTIONS,key="v10_character_options")
+selected_character=st.multiselect("🎯 人物／畫面特色（可複選）",CHARACTER_OPTIONS,key="v10_character_options")
 for _i in range(1,4):
     _c1,_c2=st.columns([1,8])
     with _c1:
@@ -433,13 +484,13 @@ if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_con
     st.success("✅ 3 組人物／場景設定已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
 
 v10_section("💬 ④ 01～08 貼圖文字", "#3498db")
-st.caption("🎲 V8 原有語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
+st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
 
 _pool_names=list(V8_RANDOM_POOLS.keys())
 v10_subsection("🎲 隨機用語與自定義語詞池", "#3498db")
 _pool_choice=st.selectbox(
     "🎲 隨機用語池",
-    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池"] + _pool_names + ["全部 V8 語詞"],
+    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池"] + _pool_names + ["全部內建語詞"],
     key="v10_phrase_pool_choice",
 )
 
@@ -490,7 +541,7 @@ else:
     if _pool_choice=="↓ 請選擇語詞池":
         _active_pool=[]
         st.info("👆 請先選擇一個語詞池。")
-    elif _pool_choice=="全部 V8 語詞":
+    elif _pool_choice=="全部內建語詞":
         _active_pool=[x for vals in V8_RANDOM_POOLS.values() for x in vals]
     else:
         _active_pool=V8_RANDOM_POOLS.get(_pool_choice,[])
@@ -508,9 +559,9 @@ else:
     with b:
         st.write(f"目前語詞池：{len(_active_pool)} 句")
     with c:
-        st.write("V8 原有分類")
+        st.write("內建語詞分類")
 
-# V8 原本的「分類→語句→指定格」功能保留。
+# 內建的「分類→語句→指定格」功能保留。
 if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"):
     p1,p2,p3=st.columns([1.2,2.4,0.8])
     with p1:
@@ -539,7 +590,7 @@ texts=get_texts()
 filled=sum(bool(x.strip()) for x in texts)
 st.info(f"已填寫 {filled} / 8 格")
 
-with st.expander("📚 查看 V8 全部語詞分類與內容",expanded=False):
+with st.expander("📚 查看全部語詞分類與內容",expanded=False):
     for cat,vals in V8_RANDOM_POOLS.items():
         st.markdown(f"**{cat}**")
         st.write("、".join(vals))
@@ -638,14 +689,16 @@ with st.expander("🔎 已選字型大圖", expanded=False):
         _p = V8_FONT_PREVIEW_DIR / f"{_selected_font:03d}.jpg"
         if _p.exists():
             st.image(str(_p), caption=f"{_selected_font:03d}｜{V8_TEXT_EFFECT_CATALOG[_selected_font]}", use_container_width=True)
-            st.caption("以上為 V8 參考效果；實際生成會由 AI 依人物、文字與整體風格重新詮釋。")
+            st.caption("以上為參考效果；實際生成會由 AI 依人物、文字與整體風格重新詮釋。")
     else:
         st.write("尚未選擇。")
 
 st.divider()
 v10_section("🌈 ⑥ 背景設定", "#16a085")
 v10_subsection("🪄 透明背景", "#16a085")
-transparent = st.checkbox("使用透明背景 PNG", value=False)
+_tb1,_tb2,_tb3=st.columns([1,2,1])
+with _tb2:
+    transparent = st.checkbox("使用透明背景 PNG", value=False)
 
 v10_subsection("🌈 風格選擇", "#ff9f43")
 style_mode = st.session_state.get("v10_style_mode", "↓ 請選擇風格")
@@ -656,17 +709,17 @@ prompt = build_prompt(style, custom_style, selected_character,
 if style_mode == V8_STYLE_CUSTOM_OPTION:
     prompt += (
         "\n【V10 風格模式】目前使用「自定義風格」模式。"
-        "請不要另外套用任何 V8 預設風格，只依照使用者自定義風格描述生成。"
+        "請不要另外套用任何 預設風格，只依照使用者自定義風格描述生成。"
     )
 else:
     prompt += (
-        f"\n【V10 風格模式】目前使用 V8 預設風格：「{style_mode}」。"
+        f"\n【V10 風格模式】目前使用預設風格：「{style_mode}」。"
         "不要把未選取的自定義風格加入生成。"
     )
 
 _selected_font_for_prompt = st.session_state.get("v8_selected_font")
 if text_style:
-    prompt += f"\n文字貼圖效果（V8）：{text_style}。"
+    prompt += f"\n文字貼圖效果：{text_style}。"
 if _selected_font_for_prompt:
     prompt += (
         f"\n125種帶圖字型參考：{_selected_font_for_prompt:03d}｜"
@@ -928,6 +981,6 @@ if st.session_state.generated_4x2_bytes:
             )
         except Exception as e:
             st.error(f"打包失敗：{e}")
-    st.caption("V10 STEP 10C.6｜定位點裁切＋V8 邊界連通背景透明化；不改動原本定位點系統。")
+    st.caption("V10 STEP 10C.6｜定位點裁切＋邊界連通背景透明化；不改動原本定位點系統。")
 st.divider()
 st.caption("V10 STEP 10C.5｜定位點裁切版")
