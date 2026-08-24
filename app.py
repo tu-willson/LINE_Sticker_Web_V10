@@ -209,6 +209,41 @@ if st.button("✨ 生成 4×2 八格總圖", type="primary", use_container_width
             st.session_state.generated_4x2_bytes = out.getvalue()
             st.session_state.crop_boxes = None
             st.success("🎉 4×2 原始總圖生成成功！")
+
+            # ============================================================
+            # 🔎 透明背景診斷：檢查「AI剛生成的原始4×2 PNG」
+            # ============================================================
+            alpha = img.getchannel("A")
+            amin, amax = alpha.getextrema()
+            hist = alpha.histogram()
+            transparent_px = int(hist[0])
+            total_px = int(img.width * img.height)
+            transparent_pct = transparent_px / total_px * 100 if total_px else 0
+
+            st.markdown("### 🔎 透明背景診斷")
+            d1, d2, d3 = st.columns(3)
+            d1.metric("圖片模式", img.mode)
+            d2.metric("透明像素", f"{transparent_pct:.2f}%")
+            d3.metric("Alpha 範圍", f"{amin} ～ {amax}")
+
+            if transparent_px > 0:
+                st.success(
+                    f"🟢 **原始生成圖確認含有真正透明像素**："
+                    f"{transparent_px:,} / {total_px:,} "
+                    f"({transparent_pct:.2f}%) Alpha=0。"
+                )
+            else:
+                st.error(
+                    "🔴 **原始生成圖沒有任何透明像素！** "
+                    "如果畫面看起來像棋盤格，棋盤格很可能已經被生成成圖片內容。"
+                )
+
+            if amin == 255 and amax == 255:
+                st.warning("⚠️ Alpha 全部為 255：這張原始圖實際上是完全不透明的。")
+            elif amin == 0 and amax == 255:
+                st.info("ℹ️ Alpha 同時存在 0 與 255：這是正常透明 PNG 的典型狀態。")
+            elif amin == 0:
+                st.info("ℹ️ 有 Alpha=0，但透明像素分布需要進一步判斷。")
         except Exception as e:
             st.error("❌ 生成失敗")
             st.code(str(e))
