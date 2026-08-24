@@ -195,34 +195,130 @@ if uploaded:
 
 st.divider()
 st.header("🎨 ② 貼圖風格")
-st.caption("🌈 V8 完整風格庫＋10 組可儲存的使用者自定風格")
+st.caption("🌈 先選一種模式：V8 預設風格，或「自定義風格」。兩者不會同時生效。")
 
-style_options=["↓ 請選擇風格"]+[x for x in V8_STYLES if not x.startswith("⭐ 自訂")]
-style=st.selectbox("🌈 V8 風格",style_options,key="v8_style")
+# ------------------------------------------------------------
+# 風格主選單：
+# 第一層直接選 V8 風格
+# 最後一項才是「⭐ 自定義風格」
+# ------------------------------------------------------------
+V8_STYLE_CUSTOM_OPTION = "⭐ 自定義風格"
+style_options = ["↓ 請選擇風格"] + [
+    x for x in V8_STYLES if not x.startswith("⭐ 自訂")
+] + [V8_STYLE_CUSTOM_OPTION]
 
-with st.expander("💾 使用者自定風格 1～10",expanded=False):
-    for _i in range(1,11):
-        _a,_b=st.columns([1,4])
-        with _a:
-            st.text_input(f"名稱 {_i:02d}",key=f"v10_style_name_{_i}")
-        with _b:
-            st.text_area(f"自定義風格 {_i:02d}",key=f"v10_style_custom_{_i}",height=65)
-    if st.button("💾 儲存 10 組自定風格",key="v10_save_styles",use_container_width=True):
-        st.success("✅ 10 組自定風格已儲存") if _save_v10_presets() else st.error("❌ 儲存失敗")
+style_mode = st.selectbox(
+    "🌈 貼圖風格",
+    style_options,
+    key="v10_style_mode",
+)
 
-_saved_style_choices=[]; _saved_style_map={}
-for _i in range(1,11):
-    _sv=st.session_state.get(f"v10_style_custom_{_i}","").strip()
-    if _sv:
-        _label=f"💾 {st.session_state.get(f'v10_style_name_{_i}',f'使用者自定{_i}')}"
-        _saved_style_choices.append(_label); _saved_style_map[_label]=_sv
-_saved=st.selectbox("💾 套用已儲存自定風格",["不套用"]+_saved_style_choices,key="v10_saved_style_choice")
-if _saved!="不套用":
-    style=_saved_style_map[_saved]
+# ------------------------------------------------------------
+# 預設風格模式
+# ------------------------------------------------------------
+if style_mode != V8_STYLE_CUSTOM_OPTION:
+    style = style_mode
 
-custom_style=st.text_area("⭐ 本次額外自定風格（不覆蓋10組）",height=80,key="v10_custom_style_current")
-with st.expander("📚 查看 V8 全部風格",expanded=False):
-    st.write("、".join(style_options[1:]))
+    # 正常 V8 風格時，不顯示自定義欄位。
+    # 這樣使用者不會產生「Q版黏土＋自定義，到底誰生效？」的疑問。
+    custom_style = ""
+
+# ------------------------------------------------------------
+# 自定義風格模式
+# 只有選到「⭐ 自定義風格」才顯示
+# ------------------------------------------------------------
+else:
+    st.success("✨ 已切換到「自定義風格」模式")
+
+    _custom_style_slots = []
+    for _i in range(1, 11):
+        _sv = st.session_state.get(f"v10_style_custom_{_i}", "").strip()
+        _sn = st.session_state.get(
+            f"v10_style_name_{_i}",
+            f"使用者自定{_i}"
+        ).strip() or f"使用者自定{_i}"
+
+        if _sv:
+            _custom_style_slots.append((_i, _sn, _sv))
+
+    if _custom_style_slots:
+        _saved_labels = [
+            f"{i:02d}｜{name}"
+            for i, name, _ in _custom_style_slots
+        ]
+
+        _selected_saved = st.selectbox(
+            "💾 選擇已儲存的自定義風格",
+            ["✏️ 直接輸入新的自定義風格"] + _saved_labels,
+            key="v10_saved_custom_style_choice",
+        )
+
+        if _selected_saved != "✏️ 直接輸入新的自定義風格":
+            _selected_index = _saved_labels.index(_selected_saved)
+            _selected_slot = _custom_style_slots[_selected_index]
+            custom_style = _selected_slot[2]
+            st.info(
+                f"💾 已套用：{_selected_slot[0]:02d}｜{_selected_slot[1]}"
+            )
+        else:
+            custom_style = ""
+    else:
+        _selected_saved = "✏️ 直接輸入新的自定義風格"
+        custom_style = ""
+
+    # 只有在自定義模式才出現 1～10 編輯區。
+    with st.expander("💾 編輯／儲存自定義風格 1～10", expanded=False):
+        for _i in range(1, 11):
+            _a, _b = st.columns([1, 4])
+
+            with _a:
+                st.text_input(
+                    f"名稱 {_i:02d}",
+                    key=f"v10_style_name_{_i}",
+                )
+
+            with _b:
+                st.text_area(
+                    f"自定義風格 {_i:02d}",
+                    key=f"v10_style_custom_{_i}",
+                    height=65,
+                )
+
+        if st.button(
+            "💾 儲存 10 組自定風格",
+            key="v10_save_styles",
+            use_container_width=True,
+        ):
+            if _save_v10_presets():
+                st.success("✅ 10 組自定風格已儲存")
+                st.rerun()
+            else:
+                st.error("❌ 儲存失敗")
+
+    # 本次臨時輸入，只在自定義模式有效。
+    _direct_custom = st.text_area(
+        "✏️ 本次自定義風格",
+        value="" if custom_style else custom_style,
+        height=90,
+        key="v10_custom_style_current",
+        help="只有「自定義風格」模式會使用這裡的內容。",
+    )
+
+    # 如果使用者有直接輸入，就以本次輸入為最終自定義風格。
+    if _direct_custom.strip():
+        custom_style = _direct_custom.strip()
+
+    # 自定義模式下，style 不再使用 V8 預設風格。
+    style = "↓ 請選擇風格"
+
+    st.warning(
+        "ℹ️ 目前為「自定義風格」模式：V8 預設風格不會同時套用。"
+    )
+
+with st.expander("📚 查看 V8 全部風格", expanded=False):
+    st.write("、".join([
+        x for x in V8_STYLES if not x.startswith("⭐ 自訂")
+    ]))
 
 st.divider()
 st.header("👤 ③ 人物與畫面特色")
@@ -319,18 +415,47 @@ if _selected_font:
 else:
     st.info("尚未指定 125 種字型；可從下方總覽選用。")
 
-with st.expander("📚 125 種帶圖字型總覽", expanded=False):
-    st.caption("🖱️ 點選字型後會立即重新整理，總覽自動收起。")
-    _font_cols=st.columns(5)
-    for _i in range(1,126):
-        _p=V8_FONT_PREVIEW_DIR/f"{_i:03d}.jpg"
-        if not _p.exists(): continue
-        with _font_cols[(_i-1)%5]:
-            st.image(str(_p),use_container_width=True)
+# ------------------------------------------------------------
+# 125 種帶圖字型總覽
+# 選中後「整個區塊不再渲染」，因此會真正收起，而不是只抖動。
+# ------------------------------------------------------------
+if "v10_font_gallery_open" not in st.session_state:
+    st.session_state.v10_font_gallery_open = False
+
+if st.button(
+    "📚 125 種帶圖字型總覽" if not st.session_state.v10_font_gallery_open
+    else "📖 關閉 125 種帶圖字型總覽",
+    key="v10_font_gallery_toggle",
+    use_container_width=True,
+):
+    st.session_state.v10_font_gallery_open = not st.session_state.v10_font_gallery_open
+    st.rerun()
+
+if st.session_state.v10_font_gallery_open:
+    st.caption("🖱️ 點選字型後會立即關閉總覽，並回到目前選擇結果。")
+
+    _font_cols = st.columns(5)
+    for _i in range(1, 126):
+        _p = V8_FONT_PREVIEW_DIR / f"{_i:03d}.jpg"
+        if not _p.exists():
+            continue
+
+        with _font_cols[(_i - 1) % 5]:
+            st.image(str(_p), use_container_width=True)
             st.caption(f"{_i:03d}｜{V8_TEXT_EFFECT_CATALOG[_i]}")
-            if st.button(f"選用 {_i:03d}",key=f"font_pick_{_i}",use_container_width=True):
-                st.session_state.v8_selected_font=_i
+
+            if st.button(
+                f"選用 {_i:03d}",
+                key=f"font_pick_{_i}",
+                use_container_width=True,
+            ):
+                st.session_state.v8_selected_font = _i
+
+                # 核心：下一次 rerun 時完全不渲染 125 總覽。
+                st.session_state.v10_font_gallery_open = False
+
                 st.rerun()
+
 
 with st.expander("🔎 已選字型大圖", expanded=False):
     if _selected_font:
@@ -347,6 +472,17 @@ transparent = st.checkbox("使用透明背景 PNG", value=False)
 
 prompt = build_prompt(style, custom_style, selected_character,
                       custom_character, texts, transparent)
+
+if style_mode == V8_STYLE_CUSTOM_OPTION:
+    prompt += (
+        "\n【V10 風格模式】目前使用「自定義風格」模式。"
+        "請不要另外套用任何 V8 預設風格，只依照使用者自定義風格描述生成。"
+    )
+else:
+    prompt += (
+        f"\n【V10 風格模式】目前使用 V8 預設風格：「{style_mode}」。"
+        "不要把未選取的自定義風格加入生成。"
+    )
 
 _selected_font_for_prompt = st.session_state.get("v8_selected_font")
 if text_style:
