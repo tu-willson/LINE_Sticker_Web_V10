@@ -199,8 +199,17 @@ if st.button("✨ 生成 4×2 八格總圖", type="primary", use_container_width
             result = client.images.edit(
                 model="gpt-image-2",
                 image=("person.png", ib, "image/png"),
-                prompt=prompt,
+                prompt=(
+                    prompt
+                    + "\n\n【透明背景強制要求】"
+                    + "\n輸出必須是真正的透明 PNG Alpha 背景。"
+                    + "\n背景區域必須為 Alpha=0，不得繪製白色、灰色或任何棋盤格圖案。"
+                    + "\n絕對不要用棋盤格、灰白方格或任何圖案來模擬透明背景。"
+                    + "\n人物、物件與文字保留正常不透明像素，只有背景透明。"
+                ),
                 size="1536x1024",
+                background="transparent",
+                output_format="png",
             )
             raw = base64.b64decode(result.data[0].b64_json)
             img = Image.open(BytesIO(raw)).convert("RGBA")
