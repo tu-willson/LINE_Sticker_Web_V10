@@ -1,3 +1,4 @@
+import zipfile
 import streamlit as st
 from openai import OpenAI
 import base64
