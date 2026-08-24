@@ -814,7 +814,7 @@ if st.session_state.generated_4x2_bytes:
     # stable version, provide a simple 01～08 selector tied to the standard
     # 4×2 positions. The final crop package still uses the original image.
     v10_subsection("📦 MAIN / TAB 選擇與打包", "#9b59b6")
-_main_tab_cols = st.columns(4)
+    _main_tab_cols = st.columns(4)
     _main_tab_options = [f"{i:02d}" for i in range(1,9)]
 
     if "step11b1_main" not in st.session_state:
