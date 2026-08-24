@@ -219,6 +219,8 @@ if uploaded:
         st.code(str(e))
 
 st.divider()
+V8_STYLE_CUSTOM_OPTION = "⭐ 自定義風格"
+
 st.header("🎨 ② 貼圖風格")
 st.caption("🌈 預設 V8 風格與「自定義風格」二選一。選擇自定義後，才會出現可套用的 10 組儲存風格。")
 
@@ -472,6 +474,8 @@ with st.expander("🔎 已選字型大圖", expanded=False):
 st.divider()
 st.header("🌈 ⑥ 背景設定")
 transparent = st.checkbox("使用透明背景 PNG", value=False)
+
+style_mode = st.session_state.get("v10_style_mode", "↓ 請選擇風格")
 
 prompt = build_prompt(style, custom_style, selected_character,
                       custom_character, texts, transparent)
