@@ -251,7 +251,7 @@ if st.session_state.generated_4x2_bytes:
     _image_b64 = base64.b64encode(st.session_state.generated_4x2_bytes).decode("ascii")
     _boxes_json = __import__("json").dumps(st.session_state.crop_boxes, ensure_ascii=False)
     _crop_html = _CROP_HTML_TEMPLATE.replace("__IMAGE_B64__", _image_b64).replace("__IW__", str(int(w))).replace("__IH__", str(int(h))).replace("__BOXES__", _boxes_json)
-    st.html(_crop_html, height=760, scrolling=False)
+    st.html(_crop_html, width=1100, unsafe_allow_javascript=True)
     st.caption("V10 STEP 10C.3｜不使用 Custom Component、不使用 streamlit-drawable-canvas、不使用外部 CDN；裁切與下載完全在瀏覽器端。")
 st.divider()
 st.caption("V10 STEP 10C｜原生 HTML Canvas｜AI負責內容、程式負責定位與裁切")
