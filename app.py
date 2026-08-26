@@ -775,11 +775,25 @@ with st.expander("🔍 點選查看貼圖設定"):
 
         for _line in _lines:
             # 只有真正的「主題開頭」才建立新區塊。
+            # 第1～8格指定貼圖文字視為同一個「01～08 貼圖文字」區塊。
+            _is_text_slot = bool(re.match(r"^第[1-8]格的指定貼圖文字", _line))
             _is_section = any(_line.startswith(k) for k in _section_keywords)
+
+            if _is_text_slot:
+                if _current and not any(
+                    bool(re.match(r"^第[1-8]格的指定貼圖文字", x))
+                    for x in _current
+                ):
+                    _groups.append(_current)
+                    _current = []
+                _current.append(_line)
+                continue
+
             if _is_section and _current:
                 _groups.append(_current)
                 _current = []
             _current.append(_line)
+
         if _current:
             _groups.append(_current)
 
@@ -816,14 +830,26 @@ with st.expander("🔍 點選查看貼圖設定"):
             _accent, _bg, _border = _palette[_idx % len(_palette)]
             _title = _group[0]
 
+            # 01～08 指定貼圖文字統一使用一個彩色區塊。
+            _is_slot_group = bool(
+                re.match(r"^第[1-8]格的指定貼圖文字", _title)
+            )
+            if _is_slot_group:
+                _heading = "01～08 指定貼圖文字"
+                _rest = ""
+                _title_is_custom = True
+            else:
+                _title_is_custom = False
+
             # 將「主題：內容」拆成彩色標題＋內容。
             _m = re.match(r'^([^：:]{1,24}[：:])(.*)$', _title)
-            if _m:
-                _heading = _m.group(1)
-                _rest = _m.group(2).strip()
-            else:
-                _heading = _title if len(_title) <= 28 else "Prompt 內容"
-                _rest = "" if _heading == _title else _title
+            if not _title_is_custom:
+                if _m:
+                    _heading = _m.group(1)
+                    _rest = _m.group(2).strip()
+                else:
+                    _heading = _title if len(_title) <= 28 else "Prompt 內容"
+                    _rest = "" if _heading == _title else _title
 
             _safe_heading = (
                 _heading.replace("&","&amp;")
