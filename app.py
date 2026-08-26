@@ -1169,8 +1169,11 @@ st.caption("V10 STEP 10C.5｜定位點裁切版")
 st.markdown(
     """
     <style>
-    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同樣的實心按鈕外觀 */
-    div[data-testid="stLinkButton"] a {
+    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同樣的醒目實心按鈕 */
+    div[data-testid="stLinkButton"] > a,
+    div[data-testid="stLinkButton"] > a:visited,
+    div[data-testid="stLinkButton"] > a:hover,
+    div[data-testid="stLinkButton"] > a:active {
         width: 100% !important;
         min-height: 52px !important;
         border-radius: 10px !important;
@@ -1180,20 +1183,28 @@ st.markdown(
         align-items: center !important;
         justify-content: center !important;
 
-        /* 與主要操作按鈕相同：實心底色＋白色文字 */
-        background: #262730 !important;
-        color: #ffffff !important;
-        border: 1px solid rgba(250,250,250,0.18) !important;
+        /* 醒目實心底色 */
+        background-color: #FF4B4B !important;
+        background-image: none !important;
+        color: #FFFFFF !important;
+        border: 1px solid #FF4B4B !important;
         box-shadow: none !important;
         text-decoration: none !important;
+        opacity: 1 !important;
     }
 
-    div[data-testid="stLinkButton"] a:hover {
-        background: #343640 !important;
-        color: #ffffff !important;
-        border-color: rgba(250,250,250,0.28) !important;
+    div[data-testid="stLinkButton"] > a span,
+    div[data-testid="stLinkButton"] > a p {
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
     }
-    </style>
+
+    div[data-testid="stLinkButton"] > a:hover {
+        background-color: #FF3333 !important;
+        border-color: #FF3333 !important;
+        color: #FFFFFF !important;
+    }
+</style>
 
     <div style="
         max-width: 620px;
