@@ -743,7 +743,7 @@ with st.expander("🔍 點選查看貼圖設定"):
                 📝 AI 實際生成 Prompt（完整內容）
             </div>
             <div style="font-size:15px;color:#b9c4d4;line-height:1.6;">
-                以下保留實際送給 AI 的完整 Prompt，僅改善閱讀呈現，不修改生成內容。
+                以下保留實際送給 AI 的完整 Prompt；只改善閱讀呈現，不修改生成內容。
             </div>
         </div>
         """,
@@ -753,40 +753,121 @@ with st.expander("🔍 點選查看貼圖設定"):
     _prompt_text = str(prompt or "").strip()
 
     if _prompt_text:
-        _prompt_lines = [x.strip() for x in _prompt_text.splitlines() if x.strip()]
-        _prompt_html_parts = []
+        # 以「內容主題」分段，而不是只替少數標題上色。
+        # 每個邏輯區塊都有自己的標題色、背景與分隔線。
+        _lines = [x.strip() for x in _prompt_text.splitlines() if x.strip()]
 
-        for _line in _prompt_lines:
-            _is_heading = (
-                _line.endswith(":")
-                or _line.endswith("：")
-                or _line.startswith(("【", "■", "◆", "🎨", "🧍", "💬", "🔤", "🌈", "🚫", "📷"))
-            )
+        _groups = []
+        _current = []
+        _section_keywords = (
+            "使用者自定義風格",
+            "風格：", "角色：", "人物：", "構圖：", "色彩：",
+            "整體氛圍：", "避免：", "人物與畫面特色：",
+            "文字貼圖效果：", "125種帶圖字型參考：",
+            "請使用透明背景PNG", "整體具有LINE貼圖",
+            "第1格的指定貼圖文字", "第2格的指定貼圖文字",
+            "第3格的指定貼圖文字", "第4格的指定貼圖文字",
+            "第5格的指定貼圖文字", "第6格的指定貼圖文字",
+            "第7格的指定貼圖文字", "第8格的指定貼圖文字",
+            "目前使用",
+        )
 
-            _safe = (
-                _line.replace("&", "&amp;")
-                     .replace("<", "&lt;")
-                     .replace(">", "&gt;")
-            )
+        for _line in _lines:
+            # 只有真正的「主題開頭」才建立新區塊。
+            _is_section = any(_line.startswith(k) for k in _section_keywords)
+            if _is_section and _current:
+                _groups.append(_current)
+                _current = []
+            _current.append(_line)
+        if _current:
+            _groups.append(_current)
 
-            if _is_heading:
-                _prompt_html_parts.append(
-                    f'<div style="font-size:19px;font-weight:800;color:#7dd3fc;'
-                    f'padding:10px 0 7px;margin-top:8px;border-bottom:1px solid #46536a;">'
-                    f'{_safe}</div>'
-                )
+        # 若 Prompt 沒有明確換行，至少把常見主題標籤切出來。
+        if len(_groups) == 1 and len(_lines) > 5:
+            _raw = _lines[0]
+            for _kw in _section_keywords:
+                if _kw in _raw:
+                    _parts = re.split(
+                        r'(?=' + re.escape(_kw) + r')',
+                        _raw
+                    )
+                    if len(_parts) > 1:
+                        _groups = [[p.strip()] for p in _parts if p.strip()]
+                        break
+
+        _palette = [
+            ("#67e8f9", "#10252d", "#1e5361"),  # 青
+            ("#86efac", "#10281e", "#27623d"),  # 綠
+            ("#f9a8d4", "#2d1726", "#70405a"),  # 粉
+            ("#c4b5fd", "#211a35", "#51427c"),  # 紫
+            ("#fde68a", "#2b2510", "#6b5b1e"),  # 黃
+            ("#fdba74", "#2d1d11", "#704622"),  # 橘
+            ("#93c5fd", "#13243a", "#365f91"),  # 藍
+        ]
+
+        _html = [
+            '<div style="background:#0f141d;border:1px solid #303a4a;'
+            'border-radius:14px;padding:10px 14px;'
+            'font-family:Arial,Microsoft JhengHei,sans-serif;">'
+        ]
+
+        for _idx, _group in enumerate(_groups):
+            _accent, _bg, _border = _palette[_idx % len(_palette)]
+            _title = _group[0]
+
+            # 將「主題：內容」拆成彩色標題＋內容。
+            _m = re.match(r'^([^：:]{1,24}[：:])(.*)$', _title)
+            if _m:
+                _heading = _m.group(1)
+                _rest = _m.group(2).strip()
             else:
-                _prompt_html_parts.append(
-                    f'<div style="font-size:16px;line-height:1.85;color:#edf2f7;'
-                    f'padding:3px 2px;">{_safe}</div>'
+                _heading = _title if len(_title) <= 28 else "Prompt 內容"
+                _rest = "" if _heading == _title else _title
+
+            _safe_heading = (
+                _heading.replace("&","&amp;")
+                        .replace("<","&lt;")
+                        .replace(">","&gt;")
+            )
+
+            _html.append(
+                f'<div style="margin:10px 0 14px;background:{_bg};'
+                f'border:1px solid {_border};border-left:5px solid {_accent};'
+                f'border-radius:10px;overflow:hidden;">'
+                f'<div style="padding:9px 14px;font-size:18px;font-weight:800;'
+                f'color:{_accent};border-bottom:1px solid {_border};">'
+                f'{_safe_heading}</div>'
+                f'<div style="padding:9px 14px 11px;">'
+            )
+
+            if _rest:
+                _safe = (
+                    _rest.replace("&","&amp;")
+                         .replace("<","&lt;")
+                         .replace(">","&gt;")
                 )
+                _html.append(
+                    f'<div style="font-size:16px;line-height:1.85;'
+                    f'color:#f1f5f9;padding:2px 0 5px;">{_safe}</div>'
+                )
+
+            for _line in _group[1:]:
+                _safe = (
+                    _line.replace("&","&amp;")
+                         .replace("<","&lt;")
+                         .replace(">","&gt;")
+                )
+                _html.append(
+                    f'<div style="font-size:16px;line-height:1.85;'
+                    f'color:#e7edf5;padding:3px 0;">{_safe}</div>'
+                )
+
+            _html.append("</div></div>")
+
+        _html.append("</div>")
 
         st.markdown(
-            '<div style="background:#10151f;border:1px solid #303a4a;'
-            'border-radius:12px;padding:14px 20px;max-height:720px;'
-            'overflow-y:auto;font-family:Arial,"Microsoft JhengHei",sans-serif;">'
-            + "".join(_prompt_html_parts)
-            + "</div>",
+            "".join(_html),
             unsafe_allow_html=True,
         )
     else:
