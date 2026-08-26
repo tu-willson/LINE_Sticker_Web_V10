@@ -730,113 +730,68 @@ if _selected_font_for_prompt:
     )
 with st.expander("🔍 點選查看貼圖設定"):
     st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:8px 0 6px;">'
-        '📷 區域 1｜人物照片與生成基本規則</div>'
-        '<hr style="margin:4px 0 12px;">',
+        """
+        <div style="
+            background:linear-gradient(135deg,#171c27,#202735);
+            border:1px solid #394457;
+            border-left:6px solid #58a6ff;
+            border-radius:12px;
+            padding:18px 22px;
+            margin:8px 0 14px;
+        ">
+            <div style="font-size:24px;font-weight:800;color:#ffffff;margin-bottom:8px;">
+                📝 AI 實際生成 Prompt（完整內容）
+            </div>
+            <div style="font-size:15px;color:#b9c4d4;line-height:1.6;">
+                以下保留實際送給 AI 的完整 Prompt，僅改善閱讀呈現，不修改生成內容。
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
-    )
-    st.code(
-        "• 使用提供的人物照片作為主要人物參考。\n"
-        "• 保留人物身份辨識特徵，不任意改變人物核心外觀。\n"
-        "• 一次生成一張清楚的 4×2 八格 LINE 貼圖總圖。\n"
-        "• 第一排四格、第二排四格；依輸入順序由左至右、由上至下。\n"
-        "• 八格維持同一人物身份與主要視覺風格。\n"
-        "• 每格人物完整呈現，避免裁切頭部、臉部、身體或四肢。\n"
-        "• 人物與格子邊界保持安全距離，不拉伸、變形或壓縮。",
-        language="text",
     )
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '🎨 區域 2｜貼圖風格</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    _summary_style = style if style != "↓ 請選擇風格" else "尚未選擇預設風格"
-    _summary_custom = custom_style.strip() if custom_style.strip() else "未套用自定義風格"
-    st.code(
-        f"主要貼圖風格：{_summary_style}\n自定義風格：{_summary_custom}",
-        language="text",
-    )
+    _prompt_text = str(prompt or "").strip()
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '🎯 區域 3｜人物與畫面特色</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    st.code(
-        "人物／畫面特色："
-        + ("、".join(selected_character) if selected_character else "未選擇額外特色"),
-        language="text",
-    )
-    st.code(
-        "自定義人物／場景要求："
-        + (custom_character.strip() if custom_character.strip() else "未啟用"),
-        language="text",
-    )
+    if _prompt_text:
+        _prompt_lines = [x.strip() for x in _prompt_text.splitlines() if x.strip()]
+        _prompt_html_parts = []
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '💬 區域 4｜01～08 貼圖文字</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    st.code(
-        "\n".join(
-            f"{i+1:02d}｜{t.strip() or '（此格未指定文字）'}"
-            for i, t in enumerate(texts)
-        ),
-        language="text",
-    )
+        for _line in _prompt_lines:
+            _is_heading = (
+                _line.endswith(":")
+                or _line.endswith("：")
+                or _line.startswith(("【", "■", "◆", "🎨", "🧍", "💬", "🔤", "🌈", "🚫", "📷"))
+            )
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '🔤 區域 5｜文字效果與字型</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    _summary_font = (
-        f"{_selected_font_for_prompt:03d}｜{V8_TEXT_EFFECT_CATALOG[_selected_font_for_prompt]}"
-        if _selected_font_for_prompt else "未選擇 125 種帶圖字型"
-    )
-    st.code(
-        f"文字貼圖效果：{text_style or '未指定'}\n125 種帶圖字型：{_summary_font}",
-        language="text",
-    )
+            _safe = (
+                _line.replace("&", "&amp;")
+                     .replace("<", "&lt;")
+                     .replace(">", "&gt;")
+            )
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '🌈 區域 6｜背景設定</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    st.code(
-        "透明背景 PNG："
-        + ("啟用｜要求真正 Alpha 透明背景" if transparent else "未啟用"),
-        language="text",
-    )
+            if _is_heading:
+                _prompt_html_parts.append(
+                    f'<div style="font-size:19px;font-weight:800;color:#7dd3fc;'
+                    f'padding:10px 0 7px;margin-top:8px;border-bottom:1px solid #46536a;">'
+                    f'{_safe}</div>'
+                )
+            else:
+                _prompt_html_parts.append(
+                    f'<div style="font-size:16px;line-height:1.85;color:#edf2f7;'
+                    f'padding:3px 2px;">{_safe}</div>'
+                )
 
-    st.markdown(
-        '<div style="font-size:24px;font-weight:800;margin:18px 0 6px;">'
-        '🚫 區域 7｜固定生成限制</div>'
-        '<hr style="margin:4px 0 12px;">',
-        unsafe_allow_html=True,
-    )
-    st.code(
-        "• 圖片中禁止出現 01～08 編號。\n"
-        "• 禁止加入格號、序號、位置標籤或數字標記。\n"
-        "• 只有使用者指定的貼圖文字可以出現在圖片中。\n"
-        "• 整體維持 LINE 貼圖清楚、可讀、可愛與完整構圖感。",
-        language="text",
-    )
+        st.markdown(
+            '<div style="background:#10151f;border:1px solid #303a4a;'
+            'border-radius:12px;padding:14px 20px;max-height:720px;'
+            'overflow-y:auto;font-family:Arial,"Microsoft JhengHei",sans-serif;">'
+            + "".join(_prompt_html_parts)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.info("目前尚未產生 AI Prompt。")
 
-    st.markdown(
-        '<div style="font-size:20px;font-weight:700;margin-top:18px;">'
-        '📝 AI 實際生成 Prompt（完整內容）</div>',
-        unsafe_allow_html=True,
-    )
-    st.code(prompt, language="text")
 
 v10_section("✨ ⑦ 生成 4×2 原始總圖", "#e67e22")
 if st.button("✨ 生成 4×2 八格總圖", type="primary", use_container_width=True):
