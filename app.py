@@ -1161,3 +1161,50 @@ if st.session_state.generated_4x2_bytes:
     st.caption("V10 STEP 10C.6｜定位點裁切＋邊界連通背景透明化；不改動原本定位點系統。")
 st.divider()
 st.caption("V10 STEP 10C.5｜定位點裁切版")
+
+
+# ─────────────────────────────────────────────
+# LINE 貼圖官方網站
+# ─────────────────────────────────────────────
+st.markdown(
+    """
+    <style>
+    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同級、置中 */
+    div[data-testid="stLinkButton"] a {
+        width: 100% !important;
+        min-height: 52px !important;
+        border-radius: 10px !important;
+        font-size: 18px !important;
+        font-weight: 800 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    </style>
+
+    <div style="
+        max-width: 620px;
+        margin: 42px auto 28px auto;
+        text-align: center;
+    ">
+        <div style="
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 12px;
+        ">
+            🏪 LINE 貼圖製作與上架
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+_link_col = st.columns([1, 2, 1])[1]
+with _link_col:
+    st.link_button(
+        "🔗 連結 LINE 貼圖網頁",
+        "https://creator.line.me/zh-hant/",
+        use_container_width=True,
+    )
+
