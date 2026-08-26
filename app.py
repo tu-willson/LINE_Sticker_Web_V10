@@ -1166,64 +1166,44 @@ st.caption("V10 STEP 10C.5｜定位點裁切版")
 # ─────────────────────────────────────────────
 # LINE 貼圖官方網站
 # ─────────────────────────────────────────────
-st.markdown(
-    """
-    <style>
-    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同樣的醒目實心按鈕 */
-    div[data-testid="stLinkButton"] > a,
-    div[data-testid="stLinkButton"] > a:visited,
-    div[data-testid="stLinkButton"] > a:hover,
-    div[data-testid="stLinkButton"] > a:active {
-        width: 100% !important;
-        min-height: 52px !important;
-        border-radius: 10px !important;
-        font-size: 18px !important;
-        font-weight: 800 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-
-        /* 醒目實心底色 */
-        background-color: #FF4B4B !important;
-        background-image: none !important;
-        color: #FFFFFF !important;
-        border: 1px solid #FF4B4B !important;
-        box-shadow: none !important;
-        text-decoration: none !important;
-        opacity: 1 !important;
-    }
-
-    div[data-testid="stLinkButton"] > a span,
-    div[data-testid="stLinkButton"] > a p {
-        color: #FFFFFF !important;
-        font-weight: 800 !important;
-    }
-
-    div[data-testid="stLinkButton"] > a:hover {
-        background-color: #FF3333 !important;
-        border-color: #FF3333 !important;
-        color: #FFFFFF !important;
-    }
+st.markdown("""
+<style>
+div[data-testid="stLinkButton"] > a,
+div[data-testid="stLinkButton"] > a:visited,
+div[data-testid="stLinkButton"] > a:hover,
+div[data-testid="stLinkButton"] > a:active {
+    width: 100% !important;
+    min-height: 52px !important;
+    border-radius: 10px !important;
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #FF4B4B !important;
+    background-color: #FF4B4B !important;
+    background-image: none !important;
+    color: #FFFFFF !important;
+    border: 1px solid #FF4B4B !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    opacity: 1 !important;
+}
+div[data-testid="stLinkButton"] > a span,
+div[data-testid="stLinkButton"] > a p {
+    color: #FFFFFF !important;
+    font-weight: 800 !important;
+}
+div[data-testid="stLinkButton"] > a:hover {
+    background: #FF3333 !important;
+    background-color: #FF3333 !important;
+    border-color: #FF3333 !important;
+    color: #FFFFFF !important;
+}
 </style>
+""", unsafe_allow_html=True)
 
-    <div style="
-        max-width: 620px;
-        margin: 42px auto 28px auto;
-        text-align: center;
-    ">
-        <div style="
-            font-size: 18px;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 12px;
-        ">
-            🏪 LINE 貼圖製作與上架
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
+st.markdown('<div style="height: 20px;"></div>', unsafe_allow_html=True)
 _link_col = st.columns([1, 2, 1])[1]
 with _link_col:
     st.link_button(
@@ -1231,4 +1211,3 @@ with _link_col:
         "https://creator.line.me/zh-hant/",
         use_container_width=True,
     )
-
