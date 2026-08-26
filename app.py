@@ -1169,7 +1169,7 @@ st.caption("V10 STEP 10C.5｜定位點裁切版")
 st.markdown(
     """
     <style>
-    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同級、置中 */
+    /* LINE 貼圖官方網站按鈕：與主要操作按鈕同樣的實心按鈕外觀 */
     div[data-testid="stLinkButton"] a {
         width: 100% !important;
         min-height: 52px !important;
@@ -1179,6 +1179,19 @@ st.markdown(
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+
+        /* 與主要操作按鈕相同：實心底色＋白色文字 */
+        background: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid rgba(250,250,250,0.18) !important;
+        box-shadow: none !important;
+        text-decoration: none !important;
+    }
+
+    div[data-testid="stLinkButton"] a:hover {
+        background: #343640 !important;
+        color: #ffffff !important;
+        border-color: rgba(250,250,250,0.28) !important;
     }
     </style>
 
