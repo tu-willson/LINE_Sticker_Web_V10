@@ -969,7 +969,7 @@ if st.session_state.generated_4x2_bytes:
     # 4. main/tab 選擇與裁切在同一頁完成。
     # ============================================================
     st.divider()
-    v10_section("⭐ STEP 11B｜選擇 MAIN / TAB", "#9b59b6")
+    v10_section("⭐ STEP 11B｜選擇 MAIN / TAB（電腦版下載）", "#9b59b6")
     st.markdown(
         '<div style="font-size:28px;line-height:1.5;font-weight:700;'
         'text-align:center;color:#fff;margin:10px 0 22px;">'
