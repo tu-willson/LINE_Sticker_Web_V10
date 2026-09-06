@@ -1252,6 +1252,41 @@ div[class*="st-key-v12_text_color_pick_7_2_7"] button{
   }
 }
 
+/* V12 試作版｜目前選中的色卡：外框圈選 + 勾勾。
+   白色色卡使用深色勾勾與深色外圈，避免在白色背景上看不見。 */
+div[class*="st-key-v12_color_selected_"] button{
+  position:relative !important;
+  border:3px solid #FFFFFF !important;
+  box-shadow:0 0 0 3px rgba(255,255,255,.95), 0 3px 10px rgba(0,0,0,.22) !important;
+  transform:translateY(-1px) !important;
+}
+div[class*="st-key-v12_color_selected_"] button::after{
+  content:"✓" !important;
+  position:absolute !important;
+  right:7px !important;
+  top:4px !important;
+  width:24px !important;
+  height:24px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  border-radius:50% !important;
+  background:rgba(0,0,0,.24) !important;
+  color:#FFFFFF !important;
+  font-size:18px !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+  pointer-events:none !important;
+}
+div[class*="st-key-v12_color_selected_white_"] button{
+  border:3px solid #111111 !important;
+  box-shadow:0 0 0 3px rgba(255,255,255,.98), 0 0 0 6px #111111, 0 3px 10px rgba(0,0,0,.22) !important;
+}
+div[class*="st-key-v12_color_selected_white_"] button::after{
+  color:#111111 !important;
+  background:rgba(255,255,255,.88) !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -2547,16 +2582,30 @@ def _v12_render_text_slot(i):
                 color_cols = st.columns(4)
                 for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
                     with color_cols[k % 4]:
-                        label = f"{icon} {name}"
-                        if current.get("hex") == hex_code:
-                            label = f"✅ {name}"
-                        if st.button(
-                            label,
-                            key=f"v12_text_color_pick_{i}_{j}_{k}",
-                            use_container_width=True,
-                        ):
-                            _v12_set_segment_color(i, j, name, hex_code)
-                            st.rerun()
+                        is_selected = current.get("hex") == hex_code
+                        label = f"✓ {name}" if is_selected else f"{icon} {name}"
+                        if is_selected:
+                            wrapper_key = (
+                                f"v12_color_selected_white_{i}_{j}_{k}"
+                                if k == 0
+                                else f"v12_color_selected_{i}_{j}_{k}"
+                            )
+                            with st.container(key=wrapper_key):
+                                if st.button(
+                                    label,
+                                    key=f"v12_text_color_pick_{i}_{j}_{k}",
+                                    use_container_width=True,
+                                ):
+                                    _v12_set_segment_color(i, j, name, hex_code)
+                                    st.rerun()
+                        else:
+                            if st.button(
+                                label,
+                                key=f"v12_text_color_pick_{i}_{j}_{k}",
+                                use_container_width=True,
+                            ):
+                                _v12_set_segment_color(i, j, name, hex_code)
+                                st.rerun()
 
                 if current.get("color_name") and current.get("hex"):
                     st.caption(f"目前：{current['color_name']}  `{current['hex']}`")
