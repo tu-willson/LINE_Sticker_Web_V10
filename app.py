@@ -2033,8 +2033,9 @@ def base_boxes(w, h):
 # V12｜AI 貼圖文案助手 V1
 # - 使用 Responses API 進行「主題 → 情境延伸 → 16 句候選文案」
 # - 與 gpt-image-2 圖片生成分開，不改動原本圖片生成流程
-# - 網站免費模式：共用每日 AI 額度 1 次
+# - AI 文案助手測試階段：暫時不扣網站每日 AI 額度，開放不限次數
 # - 自有 API 模式：使用使用者自己的 OpenAI API，不扣網站額度
+# - 後續可再獨立加入「5 分鐘冷卻」限制，不與圖片生成額度綁定
 # ============================================================
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
 V12_AI_COPY_TONES = [
@@ -2053,14 +2054,13 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
     if not topic:
         raise ValueError("missing_topic")
 
+    # AI 文案助手目前是獨立測試功能：
+    # 暫時不使用網站每日 10 次 AI 額度，避免與圖片生成共用額度。
     if api_mode == "🔑 使用自己的 OpenAI API":
         if not user_api_key:
             raise ValueError("missing_user_api_key")
         _copy_client = OpenAI(api_key=user_api_key)
     else:
-        _quota_claim = _consume_daily_ai_quota()
-        if not _quota_claim or not bool(_quota_claim.get("granted", False)):
-            raise RuntimeError("copy_quota_exhausted")
         _copy_client = client
 
     schema = {
@@ -2096,7 +2096,8 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
         "請讓 16 句涵蓋不同情緒與情境，並保持同一主題世界觀。"
     )
 
-    quota_claimed = api_mode != "🔑 使用自己的 OpenAI API"
+    # 文案助手測試階段不扣網站額度，因此本次不需要 quota claim / refund。
+    quota_claimed = False
     try:
         response = _copy_client.responses.create(
             model=V12_AI_COPY_MODEL,
@@ -2660,11 +2661,20 @@ v10_section("💬 ④ 01～08 貼圖文字", "#3498db")
 st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
 
 # V12｜AI 貼圖文案助手 V1：只負責文字，不碰原本圖片生成流程。
+#
+# API Key 狀態修正：
+# Streamlit 每次互動都會 rerun 整個 script。這裡先建立 Session-level 的
+# canonical API 狀態，AI 文案助手只讀 Session，不自行重設 API Key。
+st.session_state.setdefault("v11_api_mode", "🆓 使用網站免費額度")
+st.session_state.setdefault("v11_user_api_key", "")
+_v12_current_api_mode = st.session_state.get("v11_api_mode", "🆓 使用網站免費額度")
+_v12_current_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+
 with st.expander("🤖 AI 幫想 8 句貼圖文字", expanded=False):
-    st.caption("📌 每次會先產生 16 句候選，再由你挑選 8 句。網站免費模式會使用 1 次每日 AI 額度。")
+    st.caption("📌 每次會先產生 16 句候選，再由你挑選 8 句。\n目前為測試階段，文案助手暫時不限次數，不占用網站每日 AI 額度。")
     _v12_render_ai_copy_assistant(
-        st.session_state.get("v11_api_mode", "🆓 使用網站免費額度"),
-        str(st.session_state.get("v11_user_api_key", "") or "").strip(),
+        _v12_current_api_mode,
+        _v12_current_user_api_key,
     )
 
 
@@ -3351,6 +3361,12 @@ with st.expander("🔍 點選查看貼圖設定"):
 
 
 
+def _v12_sync_user_api_key():
+    """把 API Key 留在目前 Streamlit Session；切換其他 widget 時不重新初始化。"""
+    value = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+    st.session_state["v11_user_api_key"] = value
+
+
 # ============================================================
 # V11 STEP 02B-3A｜使用者自有 OpenAI API
 #
@@ -3373,8 +3389,6 @@ _api_mode = st.radio(
     key="v11_api_mode",
 )
 
-_v11_user_api_key = ""
-
 # API 教學連結：固定顯示，讓不熟悉 API 的使用者也能先了解申請方式。
 st.link_button(
     "申請API教學連結-**HKT實驗室**",
@@ -3385,8 +3399,10 @@ st.link_button(
 )
 
 if _api_mode == "🆓 使用網站免費額度":
+    # 即使目前選免費模式，也保留 Session 中的自有 API Key，不因切換模式而清空。
+    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
     st.caption(
-        "🎁 使用網站提供的免費額度，所有訪客共用每日 10 次。"
+        "🎁 圖片生成仍使用網站提供的每日 AI 額度；AI 文案助手目前暫時不限次數。"
     )
     _daily_quota = _show_daily_ai_quota()
 
@@ -3413,7 +3429,11 @@ else:
         placeholder="sk-••••••••••••••••••••",
         key="v11_user_api_key",
         help="請輸入你自己的 OpenAI API Key。",
+        on_change=_v12_sync_user_api_key,
     ).strip()
+
+    # 以 Session 中的值作為後續圖片生成與 AI 文案助手的唯一來源。
+    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
 
     if _v11_user_api_key:
         st.success(
