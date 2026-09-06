@@ -2671,17 +2671,32 @@ st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲
 
 # V12｜AI 貼圖文案助手 V1：只負責文字，不碰原本圖片生成流程。
 #
-# API Key 狀態修正：
-# Streamlit 每次互動都會 rerun 整個 script。這裡先建立 Session-level 的
-# canonical API 狀態，AI 文案助手只讀 Session，不自行重設 API Key。
+# API 狀態穩定化：
+# Streamlit 每次互動都會 rerun 整個 script。除了 API Key 之外，
+# 「使用網站免費額度／使用自己的 OpenAI API」也必須有獨立的
+# canonical Session state，避免點選字型、開關字型總覽等 widget 造成
+# rerun 後 radio 回到預設值。
+_ALLOWED_API_MODES = [
+    "🆓 使用網站免費額度",
+    "🔑 使用自己的 OpenAI API",
+]
 st.session_state.setdefault("v11_api_mode", "🆓 使用網站免費額度")
+st.session_state.setdefault("v12_saved_api_mode", "")
+# 第一次建立 canonical state 時，沿用目前既有的 v11_api_mode。
+if st.session_state.get("v12_saved_api_mode") not in _ALLOWED_API_MODES:
+    _legacy_api_mode = str(st.session_state.get("v11_api_mode", "") or "")
+    st.session_state["v12_saved_api_mode"] = (
+        _legacy_api_mode if _legacy_api_mode in _ALLOWED_API_MODES
+        else "🆓 使用網站免費額度"
+    )
 st.session_state.setdefault("v11_user_api_key", "")
 # 額外保留一份 Session-level backup，避免 API Key widget 因 rerun /
 # 條件式顯示暫時未渲染而被 Streamlit 清除。
 st.session_state.setdefault("v12_saved_user_api_key", "")
 if st.session_state.get("v11_user_api_key"):
     st.session_state["v12_saved_user_api_key"] = str(st.session_state.get("v11_user_api_key") or "").strip()
-_v12_current_api_mode = st.session_state.get("v11_api_mode", "🆓 使用網站免費額度")
+_v12_current_api_mode = st.session_state.get("v12_saved_api_mode", "🆓 使用網站免費額度")
+st.session_state["v11_api_mode"] = _v12_current_api_mode
 _v12_current_user_api_key = str(
     st.session_state.get("v11_user_api_key")
     or st.session_state.get("v12_saved_user_api_key")
@@ -3379,6 +3394,14 @@ with st.expander("🔍 點選查看貼圖設定"):
 
 
 
+def _v12_sync_api_mode():
+    """把 API 使用模式同步到獨立 canonical Session state。"""
+    value = str(st.session_state.get("v12_api_mode_widget", "") or "")
+    if value not in _ALLOWED_API_MODES:
+        value = "🆓 使用網站免費額度"
+    st.session_state["v12_saved_api_mode"] = value
+    st.session_state["v11_api_mode"] = value
+
 def _v12_sync_user_api_key():
     """把 API Key 同步到兩個 Session 狀態，避免 widget rerun 後遺失。"""
     value = str(st.session_state.get("v11_user_api_key", "") or "").strip()
@@ -3399,14 +3422,21 @@ def _v12_sync_user_api_key():
 v10_section("🤖 ⑦ AI 生成方式", "#6366f1")
 st.caption("📌 選擇一種方式即可：使用網站免費額度，或使用自己的 OpenAI API。")
 
+# 重要：不要再直接把 radio 綁在 v11_api_mode。
+# 字型快速選擇／開關 125 種總覽都會觸發 Streamlit rerun，
+# 因此先由 canonical Session state 恢復 widget，再由 callback 寫回 canonical state。
+st.session_state["v12_api_mode_widget"] = st.session_state.get(
+    "v12_saved_api_mode", "🆓 使用網站免費額度"
+)
 _api_mode = st.radio(
     "請選擇生成方式",
-    [
-        "🆓 使用網站免費額度",
-        "🔑 使用自己的 OpenAI API",
-    ],
-    key="v11_api_mode",
+    _ALLOWED_API_MODES,
+    key="v12_api_mode_widget",
+    on_change=_v12_sync_api_mode,
 )
+# 兼容原本其他程式區塊仍讀取 v11_api_mode。
+st.session_state["v11_api_mode"] = _api_mode
+st.session_state["v12_saved_api_mode"] = _api_mode
 
 # API 教學連結：固定顯示，讓不熟悉 API 的使用者也能先了解申請方式。
 st.link_button(
