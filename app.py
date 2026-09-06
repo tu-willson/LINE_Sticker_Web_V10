@@ -1263,13 +1263,14 @@ div[class*="st-key-v12_color_selected_"] button{
 div[class*="st-key-v12_color_selected_"] button::after{
   content:"✓" !important;
   position:absolute !important;
-  right:7px !important;
-  top:4px !important;
+  left:50% !important;
+  top:50% !important;
   width:24px !important;
   height:24px !important;
   display:flex !important;
   align-items:center !important;
   justify-content:center !important;
+  transform:translate(-50%,-50%) !important;
   border-radius:50% !important;
   background:rgba(0,0,0,.24) !important;
   color:#FFFFFF !important;
@@ -2568,10 +2569,40 @@ def _v12_render_text_slot(i):
                     f"v12_text_color_segment_{i}_{j}",
                     current.get("text", ""),
                 )
+                # 讓使用者在文字片段旁邊直接看到目前套用的顏色。
+                if current.get("color_name") and current.get("hex"):
+                    _chip_name = str(current["color_name"])
+                    _chip_hex = str(current["hex"])
+                    _chip_border = "#777777" if _chip_hex.upper() == "#FFFFFF" else _chip_hex
+                    st.markdown(
+                        f"""
+                        <div style="display:flex;align-items:center;gap:8px;
+                                    margin:0 0 6px 0;font-weight:700;">
+                            <span>文字片段 {j+1}</span>
+                            <span style="display:inline-flex;align-items:center;gap:5px;
+                                         padding:2px 8px 2px 6px;border-radius:999px;
+                                         background:rgba(127,127,127,.10);
+                                         font-size:13px;font-weight:600;">
+                                <span style="width:14px;height:14px;border-radius:50%;
+                                             background:{_chip_hex};
+                                             border:2px solid {_chip_border};
+                                             display:inline-block;"></span>
+                                {_chip_name}
+                            </span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="margin:0 0 6px 0;font-weight:700;">文字片段 {j+1}</div>',
+                        unsafe_allow_html=True,
+                    )
                 st.text_input(
                     f"文字片段 {j+1}",
                     key=f"v12_text_color_segment_{i}_{j}",
                     placeholder="例如：你還有",
+                    label_visibility="collapsed",
                 )
                 segs[j]["text"] = str(
                     st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
