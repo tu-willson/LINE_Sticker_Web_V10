@@ -2168,15 +2168,24 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
             st.error("❌ 請先輸入自己的 OpenAI API Key。")
         else:
             try:
-                with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
-                    _phrases = _v12_ai_copy_generate(
-                        _topic, _tone, api_mode, user_api_key
-                    )
+                # 以 Session 的最新值為準，避免上方 UI 與後方 API 設定區的執行順序造成舊值。
+                _live_api_mode = st.session_state.get("v11_api_mode", api_mode)
+                _live_user_api_key = str(st.session_state.get("v11_user_api_key", user_api_key) or "").strip()
+                if _live_api_mode == "🔑 使用自己的 OpenAI API" and not _live_user_api_key:
+                    st.error("❌ 請先輸入自己的 OpenAI API Key。")
+                else:
+                    with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
+                        _phrases = _v12_ai_copy_generate(
+                            _topic, _tone, _live_api_mode, _live_user_api_key
+                        )
                 st.session_state["v12_ai_copy_candidates"] = _phrases
                 st.session_state["v12_ai_copy_topic_used"] = _topic
                 st.session_state["v12_ai_copy_tone_used"] = _tone
                 st.session_state["v12_ai_copy_selected"] = list(range(8))
-                st.rerun()
+                # 不在這裡 st.rerun()：API Key 輸入框位於本區塊後方。
+                # 若此處立即 rerun，下一輪執行前 API widget 尚未被重新渲染，
+                # Streamlit 可能清掉條件式 widget 的狀態，造成 API Key 看起來被刷掉。
+                # 直接讓本輪繼續往下執行即可，候選文案會在同一輪立即顯示。
             except RuntimeError as exc:
                 if str(exc) == "copy_quota_exhausted":
                     st.error("🔴 全站今日 AI 額度已用完，請明天再試。")
@@ -2215,7 +2224,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         with _a:
             if st.button("☑️ 前 8 句", key="v12_ai_copy_first8", use_container_width=True):
                 st.session_state["v12_ai_copy_selected"] = list(range(min(8, len(_candidates))))
-                st.rerun()
+                # 不立即 rerun，避免後方 API Key widget 在本輪被跳過。
         with _b:
             if st.button("🎯 套用所選 8 句到 01～08", key="v12_ai_copy_apply", use_container_width=True):
                 if len(_selected) != 8:
@@ -2224,7 +2233,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     set_texts([_candidates[i] for i in _selected])
                     st.session_state["v12_ai_copy_last_applied"] = True
                     st.success("✅ 已將 AI 文案套用到 01～08 貼圖文字。")
-                    st.rerun()
+                    # 不立即 rerun，讓本輪繼續完成後方 API widget 的渲染。
 
         if st.session_state.get("v12_ai_copy_last_applied", False):
             st.caption("💡 已套用完成；你仍然可以手動修改 01～08 的任何一句。")
@@ -2667,8 +2676,17 @@ st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲
 # canonical API 狀態，AI 文案助手只讀 Session，不自行重設 API Key。
 st.session_state.setdefault("v11_api_mode", "🆓 使用網站免費額度")
 st.session_state.setdefault("v11_user_api_key", "")
+# 額外保留一份 Session-level backup，避免 API Key widget 因 rerun /
+# 條件式顯示暫時未渲染而被 Streamlit 清除。
+st.session_state.setdefault("v12_saved_user_api_key", "")
+if st.session_state.get("v11_user_api_key"):
+    st.session_state["v12_saved_user_api_key"] = str(st.session_state.get("v11_user_api_key") or "").strip()
 _v12_current_api_mode = st.session_state.get("v11_api_mode", "🆓 使用網站免費額度")
-_v12_current_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+_v12_current_user_api_key = str(
+    st.session_state.get("v11_user_api_key")
+    or st.session_state.get("v12_saved_user_api_key")
+    or ""
+).strip()
 
 with st.expander("🤖 AI 幫想 8 句貼圖文字", expanded=False):
     st.caption("📌 每次會先產生 16 句候選，再由你挑選 8 句。\n目前為測試階段，文案助手暫時不限次數，不占用網站每日 AI 額度。")
@@ -3362,9 +3380,10 @@ with st.expander("🔍 點選查看貼圖設定"):
 
 
 def _v12_sync_user_api_key():
-    """把 API Key 留在目前 Streamlit Session；切換其他 widget 時不重新初始化。"""
+    """把 API Key 同步到兩個 Session 狀態，避免 widget rerun 後遺失。"""
     value = str(st.session_state.get("v11_user_api_key", "") or "").strip()
     st.session_state["v11_user_api_key"] = value
+    st.session_state["v12_saved_user_api_key"] = value
 
 
 # ============================================================
@@ -3411,6 +3430,13 @@ else:
         "💡 適合需要較多生成次數的使用者；使用自己的 API 時，"
         "不受網站每日 10 次額度限制。"
     )
+
+    # 若 API Key widget 曾因切換模式 / rerun 被 Streamlit 暫時清除，
+    # 從獨立 Session backup 還原，再建立 text_input。
+    if not str(st.session_state.get("v11_user_api_key", "") or "").strip():
+        _saved_key = str(st.session_state.get("v12_saved_user_api_key", "") or "").strip()
+        if _saved_key:
+            st.session_state["v11_user_api_key"] = _saved_key
 
     st.info(
         "🔐 **隱私提醒**\n\n"
