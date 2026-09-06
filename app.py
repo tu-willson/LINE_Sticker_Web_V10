@@ -1814,6 +1814,7 @@ def _v12_load_history_record(record):
                 ji + 1
             )
             st.session_state[f"v12_text_color_enabled_{si}"] = True
+            st.session_state[f"v12_text_color_enabled_widget_{si}"] = True
 
 
 def _v12_delete_history_record(project_id):
@@ -1954,9 +1955,22 @@ V12_TEXT_COLOR_PALETTE = [
 def _v12_default_color_segments():
     return [{"text": "", "color_name": "", "hex": ""} for _ in range(3)]
 
+def _v12_sync_text_color_enabled(i):
+    """把局部文字上色 checkbox 的 widget 狀態同步到獨立 canonical state。
+    使用獨立 widget key，避免後續 rerun / 新增片段時直接改動已建立的 checkbox。
+    """
+    widget_key = f"v12_text_color_enabled_widget_{i}"
+    st.session_state[f"v12_text_color_enabled_{i}"] = bool(
+        st.session_state.get(widget_key, False)
+    )
+
 def _v12_init_color_segment_state():
     for i in range(8):
-        st.session_state.setdefault(f"v12_text_color_enabled_{i}", False)
+        canonical_key = f"v12_text_color_enabled_{i}"
+        widget_key = f"v12_text_color_enabled_widget_{i}"
+        st.session_state.setdefault(canonical_key, False)
+        # checkbox 使用獨立 widget key；只在第一次建立時從 canonical state 帶入。
+        st.session_state.setdefault(widget_key, bool(st.session_state.get(canonical_key, False)))
         st.session_state.setdefault(f"v12_text_color_count_{i}", 0)
         segs = st.session_state.get(f"v12_text_color_segments_{i}")
         if not isinstance(segs, list):
@@ -2007,6 +2021,7 @@ def _v12_valid_color_segments(texts):
 def _v12_clear_text_color_segments():
     for i in range(8):
         st.session_state[f"v12_text_color_enabled_{i}"] = False
+        st.session_state[f"v12_text_color_enabled_widget_{i}"] = False
         st.session_state[f"v12_text_color_count_{i}"] = 0
         st.session_state[f"v12_text_color_segments_{i}"] = _v12_default_color_segments()
         for j in range(3):
@@ -3069,10 +3084,17 @@ def _v12_render_text_slot(i):
         st.session_state.get(_widget_key, "") or ""
     )
 
-    if st.checkbox(
+    _color_enabled_widget_key = f"v12_text_color_enabled_widget_{i}"
+    _color_enabled = st.checkbox(
         "🎨 啟用局部文字上色",
-        key=f"v12_text_color_enabled_{i}",
-    ):
+        key=_color_enabled_widget_key,
+        on_change=_v12_sync_text_color_enabled,
+        args=(i,),
+    )
+    # checkbox 本身使用 widget key；canonical state 只作為穩定資料來源。
+    st.session_state[f"v12_text_color_enabled_{i}"] = bool(_color_enabled)
+
+    if _color_enabled:
         count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
         if count < 1:
             count = 1
