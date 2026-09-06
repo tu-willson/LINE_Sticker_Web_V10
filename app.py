@@ -2132,30 +2132,18 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
 
 def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     """V12｜AI 文案助手＋多主題暫存池（Session-only）。
-    規則：每次 AI 產生 16 句；使用者可只勾選想保存的句子；
-    每個主題最多 30 句；本次創作最多同時使用 3 個主題；
+    規則：主題只在使用者完成 AI 生成並選擇儲存文案後建立；
+    每次 AI 產生 16 句，使用者可只勾選想保存的句子；
+    每個主題最多 30 句；本次創作最多同時使用 3 個已建立主題；
     最後從已選主題的詞語池中挑選 8 句套用到 01～08。
     """
     st.session_state.setdefault("v12_theme_pools", {})
     st.session_state.setdefault("v12_selected_themes", [])
-    st.session_state.setdefault("v12_active_theme", "")
     st.session_state.setdefault("v12_ai_copy_candidates", [])
     st.session_state.setdefault("v12_ai_copy_selected", [])
+    st.session_state.setdefault("v12_ai_copy_topic", "")
     st.session_state.setdefault("v12_ai_copy_topic_used", "")
     st.session_state.setdefault("v12_ai_copy_tone_used", "")
-    st.session_state.setdefault("v12_theme_last_notice", "")
-
-    # 舊版若已有 AI 主題，第一次升級時自動建立對應的暫存主題池。
-    _legacy_topic = str(
-        st.session_state.get("v12_ai_copy_topic_used")
-        or st.session_state.get("v12_ai_copy_topic")
-        or ""
-    ).strip()
-    if _legacy_topic and _legacy_topic not in st.session_state["v12_theme_pools"]:
-        st.session_state["v12_theme_pools"][_legacy_topic] = []
-
-    if not st.session_state.get("v12_active_theme"):
-        st.session_state["v12_active_theme"] = _legacy_topic
 
     st.markdown(
         """
@@ -2164,7 +2152,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         background:color-mix(in srgb,#6366f1 7%, transparent);">
           <div style="font-size:19px;font-weight:800;margin-bottom:5px;">🤖 AI 幫你想貼圖文字</div>
           <div style="line-height:1.65;opacity:.9;">
-            輸入一個主題，AI 會一次給你 16 句候選文字。你可以只保留喜歡的句子，累積到該主題的用語池，再從最多 3 個主題中挑選最後的 8 句。
+            輸入一個主題，AI 會一次給你 16 句候選文字。你可以只保留喜歡的句子，儲存到該主題的用語池；主題只有在你實際儲存文案後才會建立。
           </div>
         </div>
         """,
@@ -2172,80 +2160,23 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     )
 
     # ------------------------------------------------------------
-    # ① 主題：目前輸入的文字就是「目前創作主題」。
-    #    主題一旦換成另一個名稱，舊主題不會被改名，而是保留成獨立主題。
+    # ① 主題：這裡只是「創作輸入」，不會因為打字就自動建立主題。
+    #    只有 AI 生成後，使用者實際儲存至少一個文案時，才建立主題。
     # ------------------------------------------------------------
-    _topic_before = str(st.session_state.get("v12_active_theme", "") or "").strip()
-    st.session_state["v12_ai_copy_topic"] = _topic_before
+    _topic_before = str(st.session_state.get("v12_ai_copy_topic", "") or "").strip()
     _topic = st.text_input(
         "💡 你想做什麼主題？",
         key="v12_ai_copy_topic",
         placeholder="例如：醫師日常篇、情侶吵架篇、媽媽的日常",
     ).strip()
 
-    if _topic and _topic != _topic_before:
-        _pools = st.session_state["v12_theme_pools"]
-        _pools.setdefault(_topic, [])
-        st.session_state["v12_active_theme"] = _topic
-        # 換主題後，本次生成結果不跨主題沿用，避免主題偏移。
+    # 使用者修改尚未建立的創作主題時，清除上一批候選文案，避免拿舊主題的結果誤存到新主題。
+    if _topic != _topic_before:
         st.session_state["v12_ai_copy_candidates"] = []
         st.session_state["v12_ai_copy_selected"] = []
-        st.session_state["v12_ai_copy_topic_used"] = _topic
-        st.session_state["v12_theme_last_notice"] = (
-            f"⚠️ 已切換至「{_topic}」。原主題與新主題為獨立創作，原先產生的內容無法套用至新主題。"
-        )
-        _topic_before = _topic
-
-    if st.session_state.get("v12_theme_last_notice"):
-        st.warning(st.session_state["v12_theme_last_notice"])
-        st.session_state["v12_theme_last_notice"] = ""
-
-    _active_theme = str(st.session_state.get("v12_active_theme") or _topic).strip()
-    if _active_theme:
-        st.session_state["v12_theme_pools"].setdefault(_active_theme, [])
 
     # ------------------------------------------------------------
-    # ② 本次創作最多選 3 個主題。
-    # ------------------------------------------------------------
-    _all_themes = list(st.session_state["v12_theme_pools"].keys())
-    if _active_theme and _active_theme not in _all_themes:
-        _all_themes.append(_active_theme)
-
-    _selected_themes = [
-        x for x in st.session_state.get("v12_selected_themes", [])
-        if x in _all_themes
-    ]
-    if _active_theme and not _selected_themes:
-        _selected_themes = [_active_theme]
-    if _active_theme and _active_theme not in _selected_themes and len(_selected_themes) < 3:
-        _selected_themes.append(_active_theme)
-    st.session_state["v12_selected_themes"] = _selected_themes[:3]
-
-    if _all_themes:
-        st.markdown("#### 🎯 本次創作使用主題")
-        st.caption("最多同時使用 3 個主題；不同主題各自獨立，但本次 8 張貼圖可以同時參考已選主題。")
-        _theme_cols = st.columns(3)
-        _theme_selected_now = []
-        for _ti, _theme in enumerate(_all_themes):
-            with _theme_cols[_ti % 3]:
-                _pool_count = len(st.session_state["v12_theme_pools"].get(_theme, []))
-                _checked = _theme in st.session_state["v12_selected_themes"]
-                _pick = st.checkbox(
-                    f"{_theme}（{_pool_count}/30）",
-                    value=_checked,
-                    key=f"v12_theme_use_{_ti}",
-                )
-                if _pick:
-                    _theme_selected_now.append(_theme)
-        if len(_theme_selected_now) > 3:
-            st.warning("⚠️ 最多只能同時使用 3 個主題；如要加入新的主題，請先移除一個已選主題。")
-            # 保留原本已選的前三個，避免第四個誤選後直接破壞既有狀態。
-            _theme_selected_now = st.session_state["v12_selected_themes"][:3]
-        st.session_state["v12_selected_themes"] = _theme_selected_now[:3]
-        st.caption(f"目前已選擇：{len(st.session_state['v12_selected_themes'])} / 3 個主題")
-
-    # ------------------------------------------------------------
-    # ③ 文案語氣
+    # ② 文案語氣
     # ------------------------------------------------------------
     _tone = st.selectbox(
         "🎭 希望文案是什麼感覺？",
@@ -2290,19 +2221,22 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                 st.error("❌ AI 文案產生失敗，請稍後再試。")
 
     # ------------------------------------------------------------
-    # ④ 本次 AI 生成結果：只勾選想保存的，不自動全部進池。
+    # ③ 本次 AI 生成結果：只勾選想保存的，不自動建立主題或全部進池。
     # ------------------------------------------------------------
     _candidates = list(st.session_state.get("v12_ai_copy_candidates") or [])
     if _candidates:
-        _used_topic = st.session_state.get("v12_ai_copy_topic_used", _topic)
+        _used_topic = str(st.session_state.get("v12_ai_copy_topic_used", "") or "").strip()
         _used_tone = st.session_state.get("v12_ai_copy_tone_used", _tone)
         st.markdown("#### 🆕 本次 AI 生成結果")
-        st.caption(f"主題：{_used_topic}　｜　語氣：{_used_tone}　｜　可勾選想保存的文案")
+        st.caption(f"主題：{_used_topic}　｜　語氣：{_used_tone}　｜　請勾選想保存的文案")
 
         _gen_selected = st.session_state.get("v12_ai_copy_selected", [])
         if not isinstance(_gen_selected, list):
             _gen_selected = []
-        _gen_selected = [int(i) for i in _gen_selected if isinstance(i, int) and 0 <= i < len(_candidates)]
+        _gen_selected = [
+            int(i) for i in _gen_selected
+            if isinstance(i, int) and 0 <= i < len(_candidates)
+        ]
         _new_gen_selected = []
         _cols = st.columns(4)
         for _idx, _phrase in enumerate(_candidates):
@@ -2328,75 +2262,131 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                 st.rerun()
         with _gc:
             if st.button(
-                f"💾 儲存勾選文案到「{_used_topic}」",
+                f"💾 儲存勾選文案到「{_used_topic}」主題",
                 key="v12_ai_copy_save_pool",
                 use_container_width=True,
             ):
-                _pool = st.session_state["v12_theme_pools"].setdefault(_used_topic, [])
-                _chosen_phrases = [_candidates[i] for i in _new_gen_selected]
-                _new_unique = [x for x in _chosen_phrases if x not in _pool]
-                _remaining = 30 - len(_pool)
-                if _remaining <= 0:
-                    st.warning(f"⚠️「{_used_topic}」主題用語池已達上限 30 句。")
-                elif len(_new_unique) > _remaining:
-                    st.warning(
-                        f"⚠️「{_used_topic}」目前已有 {len(_pool)}/30 句，這次最多還能儲存 {_remaining} 句。\n"
-                        f"目前勾選 {len(_new_unique)} 句，請取消 {len(_new_unique)-_remaining} 句後再儲存。"
-                    )
-                elif not _new_unique:
-                    st.info("ℹ️ 沒有新的文案可以加入；重複文案不會重複儲存。")
+                if not _used_topic:
+                    st.warning("⚠️ 沒有可儲存的主題。請重新輸入主題並生成 16 句。")
+                elif not _new_gen_selected:
+                    st.warning("⚠️ 請至少勾選 1 句想保存的文案。")
                 else:
-                    _pool.extend(_new_unique)
-                    st.session_state["v12_theme_pools"][_used_topic] = _pool[:30]
-                    st.success(f"✅ 已加入 {_used_topic} 主題用語池 {len(_new_unique)} 句，目前 {len(_pool[:30])}/30。")
-                    st.session_state["v12_ai_copy_selected"] = []
+                    _pools = st.session_state["v12_theme_pools"]
+                    _pool = list(_pools.get(_used_topic, []))[:30]
+                    _chosen_phrases = [_candidates[i] for i in _new_gen_selected]
+                    _new_unique = [x for x in _chosen_phrases if x not in _pool]
+                    _remaining = 30 - len(_pool)
+                    if _remaining <= 0:
+                        st.warning(f"⚠️「{_used_topic}」主題用語池已達上限 30 句。")
+                    elif len(_new_unique) > _remaining:
+                        st.warning(
+                            f"⚠️「{_used_topic}」目前已有 {len(_pool)}/30 句，這次最多還能儲存 {_remaining} 句。\n"
+                            f"目前勾選 {len(_new_unique)} 句，請取消 {len(_new_unique)-_remaining} 句後再儲存。"
+                        )
+                    elif not _new_unique:
+                        st.info("ℹ️ 勾選的文案都已存在於這個主題用語池，不會重複儲存。")
+                    else:
+                        _pool.extend(_new_unique)
+                        _pools[_used_topic] = _pool[:30]
+
+                        # 只有在真正儲存文案後，才建立主題紀錄。
+                        _selected = [
+                            x for x in st.session_state.get("v12_selected_themes", [])
+                            if x in _pools
+                        ][:3]
+                        if _used_topic not in _selected and len(_selected) < 3:
+                            _selected.append(_used_topic)
+                        st.session_state["v12_selected_themes"] = _selected[:3]
+                        st.session_state["v12_ai_copy_selected"] = []
+                        st.success(
+                            f"✅ 已將 {len(_new_unique)} 句加入「{_used_topic}」主題用語池，"
+                            f"目前 {len(_pools[_used_topic])}/30 句。"
+                        )
 
     # ------------------------------------------------------------
-    # ⑤ 主題用語池：每個主題獨立、最多 30 句；可個別勾選刪除。
+    # ④ 主題用語池：只有真正儲存過文案的主題才會出現在這裡。
+    #    每個主題可勾選「加入本次創作」，最多同時 3 個主題。
     # ------------------------------------------------------------
     st.markdown("#### 📚 主題用語池")
     _pool_themes = list(st.session_state["v12_theme_pools"].keys())
     if not _pool_themes:
-        st.info("目前尚未建立主題用語池。先生成 16 句，再勾選想保留的文案即可。")
+        st.info("目前尚未建立主題用語池。先輸入主題、生成 16 句，再勾選想保存的文案即可。")
     else:
+        # 清掉已不存在的選擇，並限制最多 3 個。
+        st.session_state["v12_selected_themes"] = [
+            x for x in st.session_state.get("v12_selected_themes", [])
+            if x in _pool_themes
+        ][:3]
+
+        st.caption(
+            f"選擇本次創作要參考的主題（最多 3 個）。目前已選："
+            f"{len(st.session_state['v12_selected_themes'])} / 3"
+        )
+
         for _theme_i, _theme in enumerate(_pool_themes):
             _pool = list(st.session_state["v12_theme_pools"].get(_theme, []))[:30]
-            with st.expander(f"📚 {_theme}｜{len(_pool)}/30 句", expanded=(_theme == _active_theme)):
+            _theme_key = f"v12_theme_use_{_theme_i}"
+            if _theme_key not in st.session_state:
+                st.session_state[_theme_key] = _theme in st.session_state["v12_selected_themes"]
+
+            _currently_selected = _theme in st.session_state["v12_selected_themes"]
+            _can_select = _currently_selected or len(st.session_state["v12_selected_themes"]) < 3
+            _use_theme = st.checkbox(
+                f"🎯 加入本次創作：{_theme}（{len(_pool)}/30）",
+                key=_theme_key,
+                disabled=not _can_select,
+            )
+
+            if _use_theme and _theme not in st.session_state["v12_selected_themes"]:
+                if len(st.session_state["v12_selected_themes"]) < 3:
+                    st.session_state["v12_selected_themes"].append(_theme)
+                else:
+                    st.session_state[_theme_key] = False
+            elif not _use_theme and _theme in st.session_state["v12_selected_themes"]:
+                st.session_state["v12_selected_themes"].remove(_theme)
+
+            with st.expander(f"📚 {_theme}｜{len(_pool)}/30 句", expanded=False):
                 if not _pool:
                     st.caption("目前沒有保存的文案。")
-                    continue
-                st.caption("勾選要刪除的句子；刪除前會再次確認。")
-                _delete_refs = []
-                _pcols = st.columns(2)
-                for _pi, _phrase in enumerate(_pool):
-                    with _pcols[_pi % 2]:
-                        if st.checkbox(
-                            f"{_pi+1:02d}. {_phrase}",
-                            key=f"v12_theme_pool_del_{_theme_i}_{_pi}",
+                else:
+                    st.caption("勾選要刪除的句子；刪除前會再次確認。")
+                    _delete_refs = []
+                    _pcols = st.columns(2)
+                    for _pi, _phrase in enumerate(_pool):
+                        with _pcols[_pi % 2]:
+                            if st.checkbox(
+                                f"{_pi+1:02d}. {_phrase}",
+                                key=f"v12_theme_pool_del_{_theme_i}_{_pi}",
+                            ):
+                                _delete_refs.append(_pi)
+                    if _delete_refs:
+                        st.warning(f"已選擇刪除 {len(_delete_refs)} 句。")
+                        if st.button(
+                            f"🗑️ 刪除勾選的 {len(_delete_refs)} 句",
+                            key=f"v12_theme_pool_delete_{_theme_i}",
+                            use_container_width=True,
                         ):
-                            _delete_refs.append(_pi)
-                if _delete_refs:
-                    st.warning(f"已選擇刪除 {len(_delete_refs)} 句。")
-                    if st.button(
-                        f"🗑️ 刪除勾選的 {len(_delete_refs)} 句",
-                        key=f"v12_theme_pool_delete_{_theme_i}",
-                        use_container_width=True,
-                    ):
-                        _remaining_pool = [x for i, x in enumerate(_pool) if i not in _delete_refs]
-                        st.session_state["v12_theme_pools"][_theme] = _remaining_pool
-                        st.success(f"✅ 已刪除 {len(_delete_refs)} 句。")
-                        st.rerun()
+                            _remaining_pool = [
+                                x for i, x in enumerate(_pool) if i not in _delete_refs
+                            ]
+                            st.session_state["v12_theme_pools"][_theme] = _remaining_pool
+                            st.success(f"✅ 已刪除 {len(_delete_refs)} 句。")
+                            st.rerun()
+
+        st.caption(
+            f"🎯 本次創作已選擇：{len(st.session_state['v12_selected_themes'])} / 3 個主題"
+        )
 
     # ------------------------------------------------------------
-    # ⑥ 從已選的最多 3 個主題中挑最終 8 句。
+    # ⑤ 從本次已選的最多 3 個主題中挑最終 8 句。
     # ------------------------------------------------------------
-    st.markdown("#### 🎯 從本次主題池選擇 8 句")
+    st.markdown("#### 🎯 從已選主題用語池選擇 8 句")
     _active_selected_themes = [
         x for x in st.session_state.get("v12_selected_themes", [])
         if x in st.session_state["v12_theme_pools"]
     ][:3]
     if not _active_selected_themes:
-        st.info("請先選擇本次創作要使用的主題。")
+        st.info("請先在上面的主題用語池勾選本次創作要使用的主題。")
     else:
         _final_refs = st.session_state.get("v12_theme_final_selected", [])
         if not isinstance(_final_refs, list):
@@ -2420,15 +2410,23 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         st.caption(f"目前已選 {_final_new.__len__()} / 8 句")
         if len(_final_new) > 8:
             st.warning("⚠️ 最多只能選 8 句，請取消多出的選項。")
-        if st.button("🎯 套用所選 8 句到 01～08", key="v12_ai_copy_apply_pool", use_container_width=True):
+        if st.button(
+            "🎯 套用所選 8 句到 01～08",
+            key="v12_ai_copy_apply_pool",
+            use_container_width=True,
+        ):
             if len(_final_new) != 8:
                 st.warning("請從已選主題用語池中剛好選擇 8 句，再套用到 01～08。")
             else:
                 _phrase_map = {}
                 for _theme in _active_selected_themes:
-                    for _pi, _phrase in enumerate(st.session_state["v12_theme_pools"].get(_theme, [])[:30]):
+                    for _pi, _phrase in enumerate(
+                        st.session_state["v12_theme_pools"].get(_theme, [])[:30]
+                    ):
                         _phrase_map[f"{_theme}\x1f{_pi}"] = _phrase
-                _final_phrases = [_phrase_map[_ref] for _ref in _final_new if _ref in _phrase_map]
+                _final_phrases = [
+                    _phrase_map[_ref] for _ref in _final_new if _ref in _phrase_map
+                ]
                 if len(_final_phrases) == 8:
                     set_texts(_final_phrases)
                     st.session_state["v12_ai_copy_last_applied"] = True
