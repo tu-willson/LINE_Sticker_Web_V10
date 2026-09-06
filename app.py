@@ -2989,6 +2989,178 @@ _v12_current_user_api_key = str(
     or ""
 ).strip()
 
+def _v12_render_text_slot(i):
+    _widget_key = f"v12_sticker_text_widget_{i}"
+    # 以獨立 widget key 保留輸入內容；canonical sticker_text_* 由 callback 同步。
+    st.session_state.setdefault(
+        _widget_key,
+        str(st.session_state.get(f"sticker_text_{i}", "") or ""),
+    )
+    st.text_input(
+        f"{i+1:02d}",
+        key=_widget_key,
+        on_change=_v12_sync_sticker_text,
+        args=(i,),
+        placeholder="例如：我知道你還有錢",
+    )
+    # 本輪 widget 可能剛被渲染；canonical state 直接取目前 widget 值，
+    # 確保後續局部上色 rerun 仍保有最新的 01～08 文字。
+    st.session_state[f"sticker_text_{i}"] = str(
+        st.session_state.get(_widget_key, "") or ""
+    )
+
+    _color_enabled_widget_key = f"v12_text_color_enabled_widget_{i}"
+    _color_enabled = st.checkbox(
+        "🎨 啟用局部文字上色",
+        key=_color_enabled_widget_key,
+        on_change=_v12_sync_text_color_enabled,
+        args=(i,),
+    )
+    # checkbox 本身使用 widget key；canonical state 只作為穩定資料來源。
+    st.session_state[f"v12_text_color_enabled_{i}"] = bool(_color_enabled)
+
+    if _color_enabled:
+        count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
+        if count < 1:
+            count = 1
+            st.session_state[f"v12_text_color_count_{i}"] = 1
+
+        st.caption("💡 輸入要變色的文字片段，再點選色卡；每格最多 3 段。")
+
+        for j in range(count):
+            segs = _v12_get_color_segments(i)
+            current = segs[j]
+            _a, _b = st.columns([1.35, 1])
+
+            with _a:
+                st.session_state.setdefault(
+                    f"v12_text_color_segment_{i}_{j}",
+                    current.get("text", ""),
+                )
+                # 讓使用者在文字片段旁邊直接看到目前套用的顏色。
+                if current.get("color_name") and current.get("hex"):
+                    _chip_name = str(current["color_name"])
+                    _chip_hex = str(current["hex"])
+                    _chip_border = "#777777" if _chip_hex.upper() == "#FFFFFF" else _chip_hex
+                    st.markdown(
+                        f"""
+                        <div style="display:flex;align-items:center;gap:8px;
+                                    margin:0 0 6px 0;font-weight:700;">
+                            <span>文字片段 {j+1}</span>
+                            <span style="display:inline-flex;align-items:center;gap:5px;
+                                         padding:2px 8px 2px 6px;border-radius:999px;
+                                         background:rgba(127,127,127,.10);
+                                         font-size:13px;font-weight:600;">
+                                <span style="width:14px;height:14px;border-radius:50%;
+                                             background:{_chip_hex};
+                                             border:2px solid {_chip_border};
+                                             display:inline-block;"></span>
+                                {_chip_name}
+                            </span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="margin:0 0 6px 0;font-weight:700;">文字片段 {j+1}</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.text_input(
+                    f"文字片段 {j+1}",
+                    key=f"v12_text_color_segment_{i}_{j}",
+                    placeholder="例如：你還有",
+                    label_visibility="collapsed",
+                )
+                segs[j]["text"] = str(
+                    st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
+                )
+
+            with _b:
+                st.markdown("**🎨 選擇顏色**")
+                color_cols = st.columns(4)
+                for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
+                    with color_cols[k % 4]:
+                        is_selected = current.get("hex") == hex_code
+                        label = f"✓ {name}" if is_selected else f"{icon} {name}"
+                        if is_selected:
+                            wrapper_key = (
+                                f"v12_color_selected_white_{i}_{j}_{k}"
+                                if k == 0
+                                else f"v12_color_selected_{i}_{j}_{k}"
+                            )
+                            with st.container(key=wrapper_key):
+                                if st.button(
+                                    label,
+                                    key=f"v12_text_color_pick_{i}_{j}_{k}",
+                                    use_container_width=True,
+                                ):
+                                    _v12_set_segment_color(i, j, name, hex_code)
+                                    st.rerun()
+                        else:
+                            if st.button(
+                                label,
+                                key=f"v12_text_color_pick_{i}_{j}_{k}",
+                                use_container_width=True,
+                            ):
+                                _v12_set_segment_color(i, j, name, hex_code)
+                                st.rerun()
+
+
+        if count < 3:
+            if st.button(
+                "＋ 新增一段文字顏色",
+                key=f"v12_text_color_add_{i}",
+                use_container_width=True,
+            ):
+                st.session_state[f"v12_text_color_count_{i}"] = count + 1
+                st.rerun()
+
+        # 精簡預覽：直接把整句文字中已設定的片段顯示成實際顏色。
+        # 不再顯示原本的綠色「已設定」說明框，避免手機版過度拉長。
+        source_text = str(st.session_state.get(f"sticker_text_{i}", "") or "")
+        if source_text.strip():
+            import html as _html
+            matches = []
+            search_from = 0
+            for seg in _v12_get_color_segments(i):
+                part = str(seg.get("text", "") or "").strip()
+                color_hex = str(seg.get("hex", "") or "").strip()
+                if not part or not color_hex:
+                    continue
+                pos = source_text.find(part, search_from)
+                if pos < 0:
+                    pos = source_text.find(part)
+                if pos >= 0:
+                    end = pos + len(part)
+                    if not any(pos < e and end > st_ for st_, e, _, _ in matches):
+                        matches.append((pos, end, part, color_hex))
+                        search_from = end
+
+            if matches:
+                matches.sort(key=lambda x: x[0])
+                parts = []
+                cursor = 0
+                for start, end, part, color_hex in matches:
+                    if start > cursor:
+                        parts.append(_html.escape(source_text[cursor:start]))
+                    border = "#777777" if color_hex.upper() == "#FFFFFF" else color_hex
+                    parts.append(
+                        f'<span style="color:{_html.escape(color_hex)};font-weight:800;'
+                        f'border-bottom:2px solid {border};">{_html.escape(part)}</span>'
+                    )
+                    cursor = end
+                if cursor < len(source_text):
+                    parts.append(_html.escape(source_text[cursor:]))
+                preview_html = "".join(parts)
+                st.markdown(
+                    f'<div style="margin:8px 0 2px 0;padding:8px 10px;'
+                    f'border-radius:10px;background:rgba(127,127,127,.08);'
+                    f'font-size:18px;font-weight:700;line-height:1.5;">{preview_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+
 if st.session_state.get("v12_text_source_panel") == "ai":
     st.caption("📌 每次會先產生 16 句候選，再由你挑選、儲存到主題用語池；文案助手目前暫時不限次數，不占用網站每日 AI 額度。")
     _v12_render_ai_copy_assistant(
@@ -3087,177 +3259,6 @@ if st.session_state.get("v12_text_source_panel") == "random":
                 for i in range(8)
             ])
             st.rerun()
-
-    def _v12_render_text_slot(i):
-        _widget_key = f"v12_sticker_text_widget_{i}"
-        # 以獨立 widget key 保留輸入內容；canonical sticker_text_* 由 callback 同步。
-        st.session_state.setdefault(
-            _widget_key,
-            str(st.session_state.get(f"sticker_text_{i}", "") or ""),
-        )
-        st.text_input(
-            f"{i+1:02d}",
-            key=_widget_key,
-            on_change=_v12_sync_sticker_text,
-            args=(i,),
-            placeholder="例如：我知道你還有錢",
-        )
-        # 本輪 widget 可能剛被渲染；canonical state 直接取目前 widget 值，
-        # 確保後續局部上色 rerun 仍保有最新的 01～08 文字。
-        st.session_state[f"sticker_text_{i}"] = str(
-            st.session_state.get(_widget_key, "") or ""
-        )
-
-        _color_enabled_widget_key = f"v12_text_color_enabled_widget_{i}"
-        _color_enabled = st.checkbox(
-            "🎨 啟用局部文字上色",
-            key=_color_enabled_widget_key,
-            on_change=_v12_sync_text_color_enabled,
-            args=(i,),
-        )
-        # checkbox 本身使用 widget key；canonical state 只作為穩定資料來源。
-        st.session_state[f"v12_text_color_enabled_{i}"] = bool(_color_enabled)
-
-        if _color_enabled:
-            count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
-            if count < 1:
-                count = 1
-                st.session_state[f"v12_text_color_count_{i}"] = 1
-
-            st.caption("💡 輸入要變色的文字片段，再點選色卡；每格最多 3 段。")
-
-            for j in range(count):
-                segs = _v12_get_color_segments(i)
-                current = segs[j]
-                _a, _b = st.columns([1.35, 1])
-
-                with _a:
-                    st.session_state.setdefault(
-                        f"v12_text_color_segment_{i}_{j}",
-                        current.get("text", ""),
-                    )
-                    # 讓使用者在文字片段旁邊直接看到目前套用的顏色。
-                    if current.get("color_name") and current.get("hex"):
-                        _chip_name = str(current["color_name"])
-                        _chip_hex = str(current["hex"])
-                        _chip_border = "#777777" if _chip_hex.upper() == "#FFFFFF" else _chip_hex
-                        st.markdown(
-                            f"""
-                            <div style="display:flex;align-items:center;gap:8px;
-                                        margin:0 0 6px 0;font-weight:700;">
-                                <span>文字片段 {j+1}</span>
-                                <span style="display:inline-flex;align-items:center;gap:5px;
-                                             padding:2px 8px 2px 6px;border-radius:999px;
-                                             background:rgba(127,127,127,.10);
-                                             font-size:13px;font-weight:600;">
-                                    <span style="width:14px;height:14px;border-radius:50%;
-                                                 background:{_chip_hex};
-                                                 border:2px solid {_chip_border};
-                                                 display:inline-block;"></span>
-                                    {_chip_name}
-                                </span>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        st.markdown(
-                            f'<div style="margin:0 0 6px 0;font-weight:700;">文字片段 {j+1}</div>',
-                            unsafe_allow_html=True,
-                        )
-                    st.text_input(
-                        f"文字片段 {j+1}",
-                        key=f"v12_text_color_segment_{i}_{j}",
-                        placeholder="例如：你還有",
-                        label_visibility="collapsed",
-                    )
-                    segs[j]["text"] = str(
-                        st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
-                    )
-
-                with _b:
-                    st.markdown("**🎨 選擇顏色**")
-                    color_cols = st.columns(4)
-                    for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
-                        with color_cols[k % 4]:
-                            is_selected = current.get("hex") == hex_code
-                            label = f"✓ {name}" if is_selected else f"{icon} {name}"
-                            if is_selected:
-                                wrapper_key = (
-                                    f"v12_color_selected_white_{i}_{j}_{k}"
-                                    if k == 0
-                                    else f"v12_color_selected_{i}_{j}_{k}"
-                                )
-                                with st.container(key=wrapper_key):
-                                    if st.button(
-                                        label,
-                                        key=f"v12_text_color_pick_{i}_{j}_{k}",
-                                        use_container_width=True,
-                                    ):
-                                        _v12_set_segment_color(i, j, name, hex_code)
-                                        st.rerun()
-                            else:
-                                if st.button(
-                                    label,
-                                    key=f"v12_text_color_pick_{i}_{j}_{k}",
-                                    use_container_width=True,
-                                ):
-                                    _v12_set_segment_color(i, j, name, hex_code)
-                                    st.rerun()
-
-
-            if count < 3:
-                if st.button(
-                    "＋ 新增一段文字顏色",
-                    key=f"v12_text_color_add_{i}",
-                    use_container_width=True,
-                ):
-                    st.session_state[f"v12_text_color_count_{i}"] = count + 1
-                    st.rerun()
-
-            # 精簡預覽：直接把整句文字中已設定的片段顯示成實際顏色。
-            # 不再顯示原本的綠色「已設定」說明框，避免手機版過度拉長。
-            source_text = str(st.session_state.get(f"sticker_text_{i}", "") or "")
-            if source_text.strip():
-                import html as _html
-                matches = []
-                search_from = 0
-                for seg in _v12_get_color_segments(i):
-                    part = str(seg.get("text", "") or "").strip()
-                    color_hex = str(seg.get("hex", "") or "").strip()
-                    if not part or not color_hex:
-                        continue
-                    pos = source_text.find(part, search_from)
-                    if pos < 0:
-                        pos = source_text.find(part)
-                    if pos >= 0:
-                        end = pos + len(part)
-                        if not any(pos < e and end > st_ for st_, e, _, _ in matches):
-                            matches.append((pos, end, part, color_hex))
-                            search_from = end
-
-                if matches:
-                    matches.sort(key=lambda x: x[0])
-                    parts = []
-                    cursor = 0
-                    for start, end, part, color_hex in matches:
-                        if start > cursor:
-                            parts.append(_html.escape(source_text[cursor:start]))
-                        border = "#777777" if color_hex.upper() == "#FFFFFF" else color_hex
-                        parts.append(
-                            f'<span style="color:{_html.escape(color_hex)};font-weight:800;'
-                            f'border-bottom:2px solid {border};">{_html.escape(part)}</span>'
-                        )
-                        cursor = end
-                    if cursor < len(source_text):
-                        parts.append(_html.escape(source_text[cursor:]))
-                    preview_html = "".join(parts)
-                    st.markdown(
-                        f'<div style="margin:8px 0 2px 0;padding:8px 10px;'
-                        f'border-radius:10px;background:rgba(127,127,127,.08);'
-                        f'font-size:18px;font-weight:700;line-height:1.5;">{preview_html}</div>',
-                        unsafe_allow_html=True,
-                    )
 
 cols=st.columns(4)
 for i,col in enumerate(cols):
