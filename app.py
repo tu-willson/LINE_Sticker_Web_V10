@@ -2638,10 +2638,6 @@ def _v12_render_text_slot(i):
                                 _v12_set_segment_color(i, j, name, hex_code)
                                 st.rerun()
 
-                if current.get("color_name") and current.get("hex"):
-                    st.caption(f"目前：{current['color_name']}  `{current['hex']}`")
-                else:
-                    st.caption("尚未選擇顏色")
 
         if count < 3:
             if st.button(
@@ -2652,20 +2648,49 @@ def _v12_render_text_slot(i):
                 st.session_state[f"v12_text_color_count_{i}"] = count + 1
                 st.rerun()
 
-        valid_here = [
-            x for x in _v12_valid_color_segments(get_texts())
-            if x["sticker_index"] == i + 1
-        ]
-        if valid_here:
-            st.success(
-                "🎨 已設定："
-                + "、".join(
-                    f"「{x['text']}」→ {x['color_name']} {x['hex']}"
-                    for x in valid_here
+        # 精簡預覽：直接把整句文字中已設定的片段顯示成實際顏色。
+        # 不再顯示原本的綠色「已設定」說明框，避免手機版過度拉長。
+        source_text = str(st.session_state.get(f"sticker_text_{i}", "") or "")
+        if source_text.strip():
+            import html as _html
+            matches = []
+            search_from = 0
+            for seg in _v12_get_color_segments(i):
+                part = str(seg.get("text", "") or "").strip()
+                color_hex = str(seg.get("hex", "") or "").strip()
+                if not part or not color_hex:
+                    continue
+                pos = source_text.find(part, search_from)
+                if pos < 0:
+                    pos = source_text.find(part)
+                if pos >= 0:
+                    end = pos + len(part)
+                    if not any(pos < e and end > st_ for st_, e, _, _ in matches):
+                        matches.append((pos, end, part, color_hex))
+                        search_from = end
+
+            if matches:
+                matches.sort(key=lambda x: x[0])
+                parts = []
+                cursor = 0
+                for start, end, part, color_hex in matches:
+                    if start > cursor:
+                        parts.append(_html.escape(source_text[cursor:start]))
+                    border = "#777777" if color_hex.upper() == "#FFFFFF" else color_hex
+                    parts.append(
+                        f'<span style="color:{_html.escape(color_hex)};font-weight:800;'
+                        f'border-bottom:2px solid {border};">{_html.escape(part)}</span>'
+                    )
+                    cursor = end
+                if cursor < len(source_text):
+                    parts.append(_html.escape(source_text[cursor:]))
+                preview_html = "".join(parts)
+                st.markdown(
+                    f'<div style="margin:8px 0 2px 0;padding:8px 10px;'
+                    f'border-radius:10px;background:rgba(127,127,127,.08);'
+                    f'font-size:18px;font-weight:700;line-height:1.5;">{preview_html}</div>',
+                    unsafe_allow_html=True,
                 )
-            )
-        else:
-            st.info("請確認文字片段確實存在於上方的貼圖文字中，AI 才會套用顏色。")
 
 cols=st.columns(4)
 for i,col in enumerate(cols):
