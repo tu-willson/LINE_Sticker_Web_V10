@@ -2922,7 +2922,7 @@ if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_con
     else:
         st.error("❌ 儲存失敗")
 
-v10_section("💬 ④ 01～08 貼圖文字－使用「✨ 主題 AI 幫想」或「🎲 隨機用語」", "#3498db")
+v10_section('💬 ④ 01～08 貼圖文字<br><span style="font-size:.72em;">使用「✨ 主題 AI 幫想」或「🎲 隨機用語」</span>', '#3498db')
 st.caption("先選擇你想使用的文字來源；01～08 文字格會一直保留顯示。")
 
 # V12｜文字來源面板：只有使用者主動點選後，才展開對應功能，
