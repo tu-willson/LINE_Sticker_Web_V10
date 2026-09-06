@@ -2188,6 +2188,9 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     if _topic != _topic_before:
         st.session_state["v12_ai_copy_candidates"] = []
         st.session_state["v12_ai_copy_selected"] = []
+        # 主題改變時，舊一批 16 句的 checkbox 狀態也一併清除。
+        for _i in range(16):
+            st.session_state.pop(f"v12_ai_copy_pick_{_i}", None)
 
     # ------------------------------------------------------------
     # ② 文案語氣
@@ -2253,36 +2256,57 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
             int(i) for i in _gen_selected
             if isinstance(i, int) and 0 <= i < len(_candidates)
         ]
-        _new_gen_selected = []
+
+        # 「全選／全部取消」必須在 checkbox widget 建立前修改 widget state。
+        # 使用 on_click callback，避免 Streamlit 在 widget 已建立後再次寫入同一個 key，
+        # 造成 StreamlitWidgetAlreadyInstantiatedError。
+        def _v12_ai_copy_select_all_cb():
+            _indices = list(range(len(st.session_state.get("v12_ai_copy_candidates") or [])))
+            st.session_state["v12_ai_copy_selected"] = _indices
+            for _i in _indices:
+                st.session_state[f"v12_ai_copy_pick_{_i}"] = True
+
+        def _v12_ai_copy_clear_all_cb():
+            _count = len(st.session_state.get("v12_ai_copy_candidates") or [])
+            st.session_state["v12_ai_copy_selected"] = []
+            for _i in range(_count):
+                st.session_state[f"v12_ai_copy_pick_{_i}"] = False
+
         _cols = st.columns(4)
         for _idx, _phrase in enumerate(_candidates):
             with _cols[_idx % 4]:
                 _pick_key = f"v12_ai_copy_pick_{_idx}"
-                # 先建立 widget state；這樣「全選／全部取消」改值後 rerun，
-                # checkbox 不會又讀回上一輪的舊狀態。
-                st.session_state.setdefault(_pick_key, _idx in _gen_selected)
-                if st.checkbox(
+                # 此處仍可安全初始化，因為 callback 已在本次 rerun 開始前執行。
+                if _pick_key not in st.session_state:
+                    st.session_state[_pick_key] = _idx in _gen_selected
+                st.checkbox(
                     f"{_idx+1:02d}. {_phrase}",
                     key=_pick_key,
-                ):
-                    _new_gen_selected.append(_idx)
+                )
+
+        # 以 widget 的最新值重新整理目前選擇。
+        _new_gen_selected = [
+            _idx for _idx in range(len(_candidates))
+            if bool(st.session_state.get(f"v12_ai_copy_pick_{_idx}", False))
+        ]
         st.session_state["v12_ai_copy_selected"] = _new_gen_selected
         st.caption(f"本次準備保存：{len(_new_gen_selected)} / 16 句")
 
         _ga, _gb, _gc = st.columns(3)
         with _ga:
-            if st.button("☑️ 全選", key="v12_ai_copy_select_all", use_container_width=True):
-                _all_indices = list(range(len(_candidates)))
-                st.session_state["v12_ai_copy_selected"] = _all_indices
-                for _i in _all_indices:
-                    st.session_state[f"v12_ai_copy_pick_{_i}"] = True
-                st.rerun()
+            st.button(
+                "☑️ 全選",
+                key="v12_ai_copy_select_all",
+                use_container_width=True,
+                on_click=_v12_ai_copy_select_all_cb,
+            )
         with _gb:
-            if st.button("↩️ 全部取消", key="v12_ai_copy_clear_all", use_container_width=True):
-                st.session_state["v12_ai_copy_selected"] = []
-                for _i in range(len(_candidates)):
-                    st.session_state[f"v12_ai_copy_pick_{_i}"] = False
-                st.rerun()
+            st.button(
+                "↩️ 全部取消",
+                key="v12_ai_copy_clear_all",
+                use_container_width=True,
+                on_click=_v12_ai_copy_clear_all_cb,
+            )
         with _gc:
             if st.button(
                 f"💾 儲存勾選文案到「{_used_topic}」主題",
