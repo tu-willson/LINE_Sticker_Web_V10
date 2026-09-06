@@ -2756,6 +2756,13 @@ st.markdown('<div class="v10-main-title">🎨 LINE 貼圖創作工作室</div>',
 st.caption("V11｜公開版｜快速完成 LINE 貼圖創作")
 
 
+# API 使用模式常數必須在所有 callback / widget 使用前先建立。
+# Streamlit 會由上而下執行整個 script，因此不可放在 AI 文案區之後。
+_ALLOWED_API_MODES = [
+    "🆓 使用網站免費額度",
+    "🔑 使用自己的 OpenAI API",
+]
+
 def _v12_sync_api_mode():
     """把 API 使用模式同步到獨立 canonical Session state。"""
     value = str(st.session_state.get("v12_api_mode_widget", "") or "")
@@ -3070,10 +3077,6 @@ with _src_b:
 # 「使用網站免費額度／使用自己的 OpenAI API」也必須有獨立的
 # canonical Session state，避免點選字型、開關字型總覽等 widget 造成
 # rerun 後 radio 回到預設值。
-_ALLOWED_API_MODES = [
-    "🆓 使用網站免費額度",
-    "🔑 使用自己的 OpenAI API",
-]
 st.session_state.setdefault("v11_api_mode", "🆓 使用網站免費額度")
 st.session_state.setdefault("v12_saved_api_mode", "")
 # 第一次建立 canonical state 時，沿用目前既有的 v11_api_mode。
