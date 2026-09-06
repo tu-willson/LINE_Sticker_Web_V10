@@ -526,6 +526,14 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* V12｜④ 文字來源雙入口：維持兩個清楚、可點選的大標題。 */
+.st-key-v12_open_ai_copy_panel button,
+.st-key-v12_open_random_panel button{
+  min-height:58px !important;
+  border-radius:12px !important;
+  font-size:18px !important;
+  font-weight:800 !important;
+}
 :root{
   --v10-max: 1180px;
   --v10-control: 820px;
@@ -2174,20 +2182,6 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     st.session_state.setdefault("v12_ai_copy_topic_used", "")
     st.session_state.setdefault("v12_ai_copy_tone_used", "")
 
-    st.markdown(
-        """
-        <div style="max-width:1000px;margin:0 auto 12px;padding:14px 16px;
-        border:1px solid rgba(99,102,241,.25);border-radius:14px;
-        background:color-mix(in srgb,#6366f1 7%, transparent);">
-          <div style="font-size:19px;font-weight:800;margin-bottom:5px;">🤖 AI 幫你想貼圖文字</div>
-          <div style="line-height:1.65;opacity:.9;">
-            輸入一個主題，AI 會一次給你 16 句候選文字。你可以只保留喜歡的句子，儲存到該主題的用語池；主題只有在你實際儲存文案後才會建立。
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     # ------------------------------------------------------------
     # ① 主題：這裡只是「創作輸入」，不會因為打字就自動建立主題。
     #    只有 AI 生成後，使用者實際儲存至少一個文案時，才建立主題。
@@ -2928,8 +2922,38 @@ if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_con
     else:
         st.error("❌ 儲存失敗")
 
-v10_section("💬 ④ 01～08 貼圖文字", "#3498db")
-st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
+v10_section("💬 ④ 01～08 貼圖文字－使用「✨ 主題 AI 幫想」或「🎲 隨機用語」", "#3498db")
+st.caption("先選擇你想使用的文字來源；01～08 文字格會一直保留顯示。")
+
+# V12｜文字來源面板：只有使用者主動點選後，才展開對應功能，
+# 避免 AI 文案與隨機用語區塊同時堆在畫面上。
+st.session_state.setdefault("v12_text_source_panel", "")
+
+def _v12_toggle_text_source(_panel):
+    if st.session_state.get("v12_text_source_panel", "") == _panel:
+        st.session_state["v12_text_source_panel"] = ""
+    else:
+        st.session_state["v12_text_source_panel"] = _panel
+
+_src_a, _src_b = st.columns(2)
+with _src_a:
+    st.button(
+        "✨ AI 幫想 8 句貼圖文字",
+        key="v12_open_ai_copy_panel",
+        use_container_width=True,
+        type="primary" if st.session_state.get("v12_text_source_panel") == "ai" else "secondary",
+        on_click=_v12_toggle_text_source,
+        args=("ai",),
+    )
+with _src_b:
+    st.button(
+        "🎲 隨機用語與自定義語詞池",
+        key="v12_open_random_panel",
+        use_container_width=True,
+        type="primary" if st.session_state.get("v12_text_source_panel") == "random" else "secondary",
+        on_click=_v12_toggle_text_source,
+        args=("random",),
+    )
 
 # V12｜AI 貼圖文案助手 V1：只負責文字，不碰原本圖片生成流程。
 #
@@ -2965,206 +2989,214 @@ _v12_current_user_api_key = str(
     or ""
 ).strip()
 
-v10_subsection("✨ AI 幫想 8 句貼圖文字", "#6366f1")
-st.caption("📌 每次會先產生 16 句候選，再由你挑選、儲存到主題用語池；文案助手目前暫時不限次數，不占用網站每日 AI 額度。")
-_v12_render_ai_copy_assistant(
-    _v12_current_api_mode,
-    _v12_current_user_api_key,
-)
+if st.session_state.get("v12_text_source_panel") == "ai":
+    st.caption("📌 每次會先產生 16 句候選，再由你挑選、儲存到主題用語池；文案助手目前暫時不限次數，不占用網站每日 AI 額度。")
+    _v12_render_ai_copy_assistant(
+        _v12_current_api_mode,
+        _v12_current_user_api_key,
+    )
 
 
-_pool_names=list(V8_RANDOM_POOLS.keys())
-v10_subsection("🎲 隨機用語與自定義語詞池", "#3498db")
-_pool_choice=st.selectbox(
-    "🎲 隨機用語池",
-    ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池", "全部內建語詞"] + _pool_names,
-    key="v10_phrase_pool_choice",
-)
+if st.session_state.get("v12_text_source_panel") == "random":
+    _pool_names=list(V8_RANDOM_POOLS.keys())
+    _pool_choice=st.selectbox(
+        "🎲 隨機用語池",
+        ["↓ 請選擇語詞池", "⭐ 我的自定義語詞池", "全部內建語詞"] + _pool_names,
+        key="v10_phrase_pool_choice",
+    )
 
-if _pool_choice=="⭐ 我的自定義語詞池":
-    with st.expander("💾 我的自定義語詞池",expanded=True):
-        _new_phrase=st.text_input(
-            "➕ 新增一句語詞",
-            key="v10_new_phrase",
-            placeholder="例如：今天也要加油！",
-        )
-        _pa,_pb,_pc=st.columns(3)
-        with _pa:
-            if st.button("➕ 加入語詞池",key="v10_add_phrase",use_container_width=True):
-                if _new_phrase.strip():
-                    V10_CUSTOM_PHRASE_POOL.append(_new_phrase.strip())
-                    V10_CUSTOM_PHRASE_POOL[:]=list(dict.fromkeys(V10_CUSTOM_PHRASE_POOL))
-                    if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
-                        st.success("✅ 已加入並儲存")
+    if _pool_choice=="⭐ 我的自定義語詞池":
+        with st.expander("💾 我的自定義語詞池",expanded=True):
+            _new_phrase=st.text_input(
+                "➕ 新增一句語詞",
+                key="v10_new_phrase",
+                placeholder="例如：今天也要加油！",
+            )
+            _pa,_pb,_pc=st.columns(3)
+            with _pa:
+                if st.button("➕ 加入語詞池",key="v10_add_phrase",use_container_width=True):
+                    if _new_phrase.strip():
+                        V10_CUSTOM_PHRASE_POOL.append(_new_phrase.strip())
+                        V10_CUSTOM_PHRASE_POOL[:]=list(dict.fromkeys(V10_CUSTOM_PHRASE_POOL))
+                        if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
+                            st.success("✅ 已加入並儲存")
+                            st.rerun()
+                        else:
+                            st.error("❌ 儲存失敗")
+            with _pb:
+                if st.button("🎲 從我的池子抽 8 句",key="v10_random_my_pool",use_container_width=True):
+                    if V10_CUSTOM_PHRASE_POOL:
+                        vals=random.sample(V10_CUSTOM_PHRASE_POOL,min(8,len(V10_CUSTOM_PHRASE_POOL)))
+                        while len(vals)<8:
+                            vals.append(random.choice(V10_CUSTOM_PHRASE_POOL))
+                        random.shuffle(vals)
+                        set_texts(vals)
                         st.rerun()
                     else:
-                        st.error("❌ 儲存失敗")
-        with _pb:
-            if st.button("🎲 從我的池子抽 8 句",key="v10_random_my_pool",use_container_width=True):
-                if V10_CUSTOM_PHRASE_POOL:
-                    vals=random.sample(V10_CUSTOM_PHRASE_POOL,min(8,len(V10_CUSTOM_PHRASE_POOL)))
+                        st.warning("目前自定義語詞池是空的。")
+            with _pc:
+                if st.button("🗑️ 清空我的池子",key="v10_clear_my_pool",use_container_width=True):
+                    V10_CUSTOM_PHRASE_POOL.clear()
+                    if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
+                        st.success("✅ 已清空")
+                        st.rerun()
+
+            if V10_CUSTOM_PHRASE_POOL:
+                st.caption(f"目前共有 {len(V10_CUSTOM_PHRASE_POOL)} 句")
+                st.write("、".join(V10_CUSTOM_PHRASE_POOL))
+            else:
+                st.info("尚未建立自定義語詞。")
+
+        _active_pool=V10_CUSTOM_PHRASE_POOL
+    else:
+        if _pool_choice=="↓ 請選擇語詞池":
+            _active_pool=[]
+            st.info("👆 請先選擇一個語詞池。")
+        elif _pool_choice=="全部內建語詞":
+            _active_pool=[x for vals in V8_RANDOM_POOLS.values() for x in vals]
+        else:
+            _active_pool=V8_RANDOM_POOLS.get(_pool_choice,[])
+
+        a,b,c=st.columns(3)
+        with a:
+            if st.button("🎲 隨機填入 8 格",use_container_width=True,key="v10_random_v8"):
+                if _active_pool:
+                    vals=random.sample(_active_pool,min(8,len(_active_pool)))
                     while len(vals)<8:
-                        vals.append(random.choice(V10_CUSTOM_PHRASE_POOL))
+                        vals.append(random.choice(_active_pool))
                     random.shuffle(vals)
                     set_texts(vals)
                     st.rerun()
-                else:
-                    st.warning("目前自定義語詞池是空的。")
-        with _pc:
-            if st.button("🗑️ 清空我的池子",key="v10_clear_my_pool",use_container_width=True):
-                V10_CUSTOM_PHRASE_POOL.clear()
-                if _save_v10_phrase_pool(V10_CUSTOM_PHRASE_POOL):
-                    st.success("✅ 已清空")
-                    st.rerun()
+        with b:
+            st.write(f"目前語詞池：{len(_active_pool)} 句")
+        with c:
+            st.write("內建語詞分類")
 
-        if V10_CUSTOM_PHRASE_POOL:
-            st.caption(f"目前共有 {len(V10_CUSTOM_PHRASE_POOL)} 句")
-            st.write("、".join(V10_CUSTOM_PHRASE_POOL))
-        else:
-            st.info("尚未建立自定義語詞。")
+    # 內建的「分類→語句→指定格」功能保留。
+    if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"):
+        p1,p2,p3=st.columns([1.2,2.4,0.8])
+        with p1:
+            _common_cat=st.selectbox("常用語分類",_pool_names,key="v8_common_cat")
+        with p2:
+            _common_phrase=st.selectbox("常用語參考",V8_RANDOM_POOLS.get(_common_cat,[]),key="v8_common_phrase")
+        with p3:
+            _target_slot=st.selectbox("放入第",[f"{i:02d}" for i in range(1,9)],key="v8_target_slot")
+        if st.button("➕ 放入選定格",key="v8_insert_phrase"):
+            set_texts([
+                _common_phrase if i==int(_target_slot)-1 else st.session_state.get(f"sticker_text_{i}","")
+                for i in range(8)
+            ])
+            st.rerun()
 
-    _active_pool=V10_CUSTOM_PHRASE_POOL
-else:
-    if _pool_choice=="↓ 請選擇語詞池":
-        _active_pool=[]
-        st.info("👆 請先選擇一個語詞池。")
-    elif _pool_choice=="全部內建語詞":
-        _active_pool=[x for vals in V8_RANDOM_POOLS.values() for x in vals]
-    else:
-        _active_pool=V8_RANDOM_POOLS.get(_pool_choice,[])
+    def _v12_render_text_slot(i):
+        _widget_key = f"v12_sticker_text_widget_{i}"
+        # 以獨立 widget key 保留輸入內容；canonical sticker_text_* 由 callback 同步。
+        st.session_state.setdefault(
+            _widget_key,
+            str(st.session_state.get(f"sticker_text_{i}", "") or ""),
+        )
+        st.text_input(
+            f"{i+1:02d}",
+            key=_widget_key,
+            on_change=_v12_sync_sticker_text,
+            args=(i,),
+            placeholder="例如：我知道你還有錢",
+        )
+        # 本輪 widget 可能剛被渲染；canonical state 直接取目前 widget 值，
+        # 確保後續局部上色 rerun 仍保有最新的 01～08 文字。
+        st.session_state[f"sticker_text_{i}"] = str(
+            st.session_state.get(_widget_key, "") or ""
+        )
 
-    a,b,c=st.columns(3)
-    with a:
-        if st.button("🎲 隨機填入 8 格",use_container_width=True,key="v10_random_v8"):
-            if _active_pool:
-                vals=random.sample(_active_pool,min(8,len(_active_pool)))
-                while len(vals)<8:
-                    vals.append(random.choice(_active_pool))
-                random.shuffle(vals)
-                set_texts(vals)
-                st.rerun()
-    with b:
-        st.write(f"目前語詞池：{len(_active_pool)} 句")
-    with c:
-        st.write("內建語詞分類")
+        _color_enabled_widget_key = f"v12_text_color_enabled_widget_{i}"
+        _color_enabled = st.checkbox(
+            "🎨 啟用局部文字上色",
+            key=_color_enabled_widget_key,
+            on_change=_v12_sync_text_color_enabled,
+            args=(i,),
+        )
+        # checkbox 本身使用 widget key；canonical state 只作為穩定資料來源。
+        st.session_state[f"v12_text_color_enabled_{i}"] = bool(_color_enabled)
 
-# 內建的「分類→語句→指定格」功能保留。
-if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"):
-    p1,p2,p3=st.columns([1.2,2.4,0.8])
-    with p1:
-        _common_cat=st.selectbox("常用語分類",_pool_names,key="v8_common_cat")
-    with p2:
-        _common_phrase=st.selectbox("常用語參考",V8_RANDOM_POOLS.get(_common_cat,[]),key="v8_common_phrase")
-    with p3:
-        _target_slot=st.selectbox("放入第",[f"{i:02d}" for i in range(1,9)],key="v8_target_slot")
-    if st.button("➕ 放入選定格",key="v8_insert_phrase"):
-        set_texts([
-            _common_phrase if i==int(_target_slot)-1 else st.session_state.get(f"sticker_text_{i}","")
-            for i in range(8)
-        ])
-        st.rerun()
+        if _color_enabled:
+            count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
+            if count < 1:
+                count = 1
+                st.session_state[f"v12_text_color_count_{i}"] = 1
 
-def _v12_render_text_slot(i):
-    _widget_key = f"v12_sticker_text_widget_{i}"
-    # 以獨立 widget key 保留輸入內容；canonical sticker_text_* 由 callback 同步。
-    st.session_state.setdefault(
-        _widget_key,
-        str(st.session_state.get(f"sticker_text_{i}", "") or ""),
-    )
-    st.text_input(
-        f"{i+1:02d}",
-        key=_widget_key,
-        on_change=_v12_sync_sticker_text,
-        args=(i,),
-        placeholder="例如：我知道你還有錢",
-    )
-    # 本輪 widget 可能剛被渲染；canonical state 直接取目前 widget 值，
-    # 確保後續局部上色 rerun 仍保有最新的 01～08 文字。
-    st.session_state[f"sticker_text_{i}"] = str(
-        st.session_state.get(_widget_key, "") or ""
-    )
+            st.caption("💡 輸入要變色的文字片段，再點選色卡；每格最多 3 段。")
 
-    _color_enabled_widget_key = f"v12_text_color_enabled_widget_{i}"
-    _color_enabled = st.checkbox(
-        "🎨 啟用局部文字上色",
-        key=_color_enabled_widget_key,
-        on_change=_v12_sync_text_color_enabled,
-        args=(i,),
-    )
-    # checkbox 本身使用 widget key；canonical state 只作為穩定資料來源。
-    st.session_state[f"v12_text_color_enabled_{i}"] = bool(_color_enabled)
+            for j in range(count):
+                segs = _v12_get_color_segments(i)
+                current = segs[j]
+                _a, _b = st.columns([1.35, 1])
 
-    if _color_enabled:
-        count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
-        if count < 1:
-            count = 1
-            st.session_state[f"v12_text_color_count_{i}"] = 1
-
-        st.caption("💡 輸入要變色的文字片段，再點選色卡；每格最多 3 段。")
-
-        for j in range(count):
-            segs = _v12_get_color_segments(i)
-            current = segs[j]
-            _a, _b = st.columns([1.35, 1])
-
-            with _a:
-                st.session_state.setdefault(
-                    f"v12_text_color_segment_{i}_{j}",
-                    current.get("text", ""),
-                )
-                # 讓使用者在文字片段旁邊直接看到目前套用的顏色。
-                if current.get("color_name") and current.get("hex"):
-                    _chip_name = str(current["color_name"])
-                    _chip_hex = str(current["hex"])
-                    _chip_border = "#777777" if _chip_hex.upper() == "#FFFFFF" else _chip_hex
-                    st.markdown(
-                        f"""
-                        <div style="display:flex;align-items:center;gap:8px;
-                                    margin:0 0 6px 0;font-weight:700;">
-                            <span>文字片段 {j+1}</span>
-                            <span style="display:inline-flex;align-items:center;gap:5px;
-                                         padding:2px 8px 2px 6px;border-radius:999px;
-                                         background:rgba(127,127,127,.10);
-                                         font-size:13px;font-weight:600;">
-                                <span style="width:14px;height:14px;border-radius:50%;
-                                             background:{_chip_hex};
-                                             border:2px solid {_chip_border};
-                                             display:inline-block;"></span>
-                                {_chip_name}
-                            </span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                with _a:
+                    st.session_state.setdefault(
+                        f"v12_text_color_segment_{i}_{j}",
+                        current.get("text", ""),
                     )
-                else:
-                    st.markdown(
-                        f'<div style="margin:0 0 6px 0;font-weight:700;">文字片段 {j+1}</div>',
-                        unsafe_allow_html=True,
+                    # 讓使用者在文字片段旁邊直接看到目前套用的顏色。
+                    if current.get("color_name") and current.get("hex"):
+                        _chip_name = str(current["color_name"])
+                        _chip_hex = str(current["hex"])
+                        _chip_border = "#777777" if _chip_hex.upper() == "#FFFFFF" else _chip_hex
+                        st.markdown(
+                            f"""
+                            <div style="display:flex;align-items:center;gap:8px;
+                                        margin:0 0 6px 0;font-weight:700;">
+                                <span>文字片段 {j+1}</span>
+                                <span style="display:inline-flex;align-items:center;gap:5px;
+                                             padding:2px 8px 2px 6px;border-radius:999px;
+                                             background:rgba(127,127,127,.10);
+                                             font-size:13px;font-weight:600;">
+                                    <span style="width:14px;height:14px;border-radius:50%;
+                                                 background:{_chip_hex};
+                                                 border:2px solid {_chip_border};
+                                                 display:inline-block;"></span>
+                                    {_chip_name}
+                                </span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f'<div style="margin:0 0 6px 0;font-weight:700;">文字片段 {j+1}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    st.text_input(
+                        f"文字片段 {j+1}",
+                        key=f"v12_text_color_segment_{i}_{j}",
+                        placeholder="例如：你還有",
+                        label_visibility="collapsed",
                     )
-                st.text_input(
-                    f"文字片段 {j+1}",
-                    key=f"v12_text_color_segment_{i}_{j}",
-                    placeholder="例如：你還有",
-                    label_visibility="collapsed",
-                )
-                segs[j]["text"] = str(
-                    st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
-                )
+                    segs[j]["text"] = str(
+                        st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
+                    )
 
-            with _b:
-                st.markdown("**🎨 選擇顏色**")
-                color_cols = st.columns(4)
-                for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
-                    with color_cols[k % 4]:
-                        is_selected = current.get("hex") == hex_code
-                        label = f"✓ {name}" if is_selected else f"{icon} {name}"
-                        if is_selected:
-                            wrapper_key = (
-                                f"v12_color_selected_white_{i}_{j}_{k}"
-                                if k == 0
-                                else f"v12_color_selected_{i}_{j}_{k}"
-                            )
-                            with st.container(key=wrapper_key):
+                with _b:
+                    st.markdown("**🎨 選擇顏色**")
+                    color_cols = st.columns(4)
+                    for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
+                        with color_cols[k % 4]:
+                            is_selected = current.get("hex") == hex_code
+                            label = f"✓ {name}" if is_selected else f"{icon} {name}"
+                            if is_selected:
+                                wrapper_key = (
+                                    f"v12_color_selected_white_{i}_{j}_{k}"
+                                    if k == 0
+                                    else f"v12_color_selected_{i}_{j}_{k}"
+                                )
+                                with st.container(key=wrapper_key):
+                                    if st.button(
+                                        label,
+                                        key=f"v12_text_color_pick_{i}_{j}_{k}",
+                                        use_container_width=True,
+                                    ):
+                                        _v12_set_segment_color(i, j, name, hex_code)
+                                        st.rerun()
+                            else:
                                 if st.button(
                                     label,
                                     key=f"v12_text_color_pick_{i}_{j}_{k}",
@@ -3172,68 +3204,60 @@ def _v12_render_text_slot(i):
                                 ):
                                     _v12_set_segment_color(i, j, name, hex_code)
                                     st.rerun()
-                        else:
-                            if st.button(
-                                label,
-                                key=f"v12_text_color_pick_{i}_{j}_{k}",
-                                use_container_width=True,
-                            ):
-                                _v12_set_segment_color(i, j, name, hex_code)
-                                st.rerun()
 
 
-        if count < 3:
-            if st.button(
-                "＋ 新增一段文字顏色",
-                key=f"v12_text_color_add_{i}",
-                use_container_width=True,
-            ):
-                st.session_state[f"v12_text_color_count_{i}"] = count + 1
-                st.rerun()
+            if count < 3:
+                if st.button(
+                    "＋ 新增一段文字顏色",
+                    key=f"v12_text_color_add_{i}",
+                    use_container_width=True,
+                ):
+                    st.session_state[f"v12_text_color_count_{i}"] = count + 1
+                    st.rerun()
 
-        # 精簡預覽：直接把整句文字中已設定的片段顯示成實際顏色。
-        # 不再顯示原本的綠色「已設定」說明框，避免手機版過度拉長。
-        source_text = str(st.session_state.get(f"sticker_text_{i}", "") or "")
-        if source_text.strip():
-            import html as _html
-            matches = []
-            search_from = 0
-            for seg in _v12_get_color_segments(i):
-                part = str(seg.get("text", "") or "").strip()
-                color_hex = str(seg.get("hex", "") or "").strip()
-                if not part or not color_hex:
-                    continue
-                pos = source_text.find(part, search_from)
-                if pos < 0:
-                    pos = source_text.find(part)
-                if pos >= 0:
-                    end = pos + len(part)
-                    if not any(pos < e and end > st_ for st_, e, _, _ in matches):
-                        matches.append((pos, end, part, color_hex))
-                        search_from = end
+            # 精簡預覽：直接把整句文字中已設定的片段顯示成實際顏色。
+            # 不再顯示原本的綠色「已設定」說明框，避免手機版過度拉長。
+            source_text = str(st.session_state.get(f"sticker_text_{i}", "") or "")
+            if source_text.strip():
+                import html as _html
+                matches = []
+                search_from = 0
+                for seg in _v12_get_color_segments(i):
+                    part = str(seg.get("text", "") or "").strip()
+                    color_hex = str(seg.get("hex", "") or "").strip()
+                    if not part or not color_hex:
+                        continue
+                    pos = source_text.find(part, search_from)
+                    if pos < 0:
+                        pos = source_text.find(part)
+                    if pos >= 0:
+                        end = pos + len(part)
+                        if not any(pos < e and end > st_ for st_, e, _, _ in matches):
+                            matches.append((pos, end, part, color_hex))
+                            search_from = end
 
-            if matches:
-                matches.sort(key=lambda x: x[0])
-                parts = []
-                cursor = 0
-                for start, end, part, color_hex in matches:
-                    if start > cursor:
-                        parts.append(_html.escape(source_text[cursor:start]))
-                    border = "#777777" if color_hex.upper() == "#FFFFFF" else color_hex
-                    parts.append(
-                        f'<span style="color:{_html.escape(color_hex)};font-weight:800;'
-                        f'border-bottom:2px solid {border};">{_html.escape(part)}</span>'
+                if matches:
+                    matches.sort(key=lambda x: x[0])
+                    parts = []
+                    cursor = 0
+                    for start, end, part, color_hex in matches:
+                        if start > cursor:
+                            parts.append(_html.escape(source_text[cursor:start]))
+                        border = "#777777" if color_hex.upper() == "#FFFFFF" else color_hex
+                        parts.append(
+                            f'<span style="color:{_html.escape(color_hex)};font-weight:800;'
+                            f'border-bottom:2px solid {border};">{_html.escape(part)}</span>'
+                        )
+                        cursor = end
+                    if cursor < len(source_text):
+                        parts.append(_html.escape(source_text[cursor:]))
+                    preview_html = "".join(parts)
+                    st.markdown(
+                        f'<div style="margin:8px 0 2px 0;padding:8px 10px;'
+                        f'border-radius:10px;background:rgba(127,127,127,.08);'
+                        f'font-size:18px;font-weight:700;line-height:1.5;">{preview_html}</div>',
+                        unsafe_allow_html=True,
                     )
-                    cursor = end
-                if cursor < len(source_text):
-                    parts.append(_html.escape(source_text[cursor:]))
-                preview_html = "".join(parts)
-                st.markdown(
-                    f'<div style="margin:8px 0 2px 0;padding:8px 10px;'
-                    f'border-radius:10px;background:rgba(127,127,127,.08);'
-                    f'font-size:18px;font-weight:700;line-height:1.5;">{preview_html}</div>',
-                    unsafe_allow_html=True,
-                )
 
 cols=st.columns(4)
 for i,col in enumerate(cols):
