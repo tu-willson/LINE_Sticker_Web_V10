@@ -1246,6 +1246,7 @@ def _v12_new_project_metadata():
         "generation_method": "",
         "transparent_background": False,
         "sticker_texts": [""] * 8,
+        "sticker_color_segments": [],
         "source_image": None,
         "generated_grid": None,
         "stickers": [],
@@ -1269,6 +1270,7 @@ def _v12_new_project_metadata():
             "generation_method": "",
             "transparent_background": False,
             "sticker_texts": [""] * 8,
+            "sticker_color_segments": [],
         },
         "package_settings": {
             "main_no": "",
@@ -1310,6 +1312,33 @@ def _v12_normalize_project_metadata(metadata):
     sticker_texts = [str(x) for x in sticker_texts[:8]]
     sticker_texts += [""] * (8 - len(sticker_texts))
 
+    sticker_color_segments = data.get(
+        "sticker_color_segments",
+        creative.get("sticker_color_segments", [])
+    )
+    if not isinstance(sticker_color_segments, list):
+        sticker_color_segments = []
+    normalized_color_segments = []
+    for item in sticker_color_segments[:24]:
+        if not isinstance(item, dict):
+            continue
+        try:
+            si = int(item.get("sticker_index", 0))
+            ji = int(item.get("segment_index", 0))
+        except Exception:
+            continue
+        part = str(item.get("text", "") or "").strip()
+        color_name = str(item.get("color_name", "") or "").strip()
+        hex_code = str(item.get("hex", "") or "").strip()
+        if 1 <= si <= 8 and 1 <= ji <= 3 and part and color_name and hex_code:
+            normalized_color_segments.append({
+                "sticker_index": si,
+                "segment_index": ji,
+                "text": part,
+                "color_name": color_name,
+                "hex": hex_code,
+            })
+
     normalized = dict(data)
     normalized.update({
         "project_id": project_id,
@@ -1322,6 +1351,7 @@ def _v12_normalize_project_metadata(metadata):
         "generation_method": str(data.get("generation_method", creative.get("generation_method", "")) or ""),
         "transparent_background": bool(data.get("transparent_background", creative.get("transparent_background", False))),
         "sticker_texts": sticker_texts,
+        "sticker_color_segments": normalized_color_segments,
         "schema_version": "v12.project.1",
     })
 
@@ -1340,6 +1370,7 @@ def _v12_normalize_project_metadata(metadata):
         "generation_method": normalized["generation_method"],
         "transparent_background": normalized["transparent_background"],
         "sticker_texts": list(normalized["sticker_texts"]),
+        "sticker_color_segments": list(normalized["sticker_color_segments"]),
     }
     normalized["package_settings"] = {
         "main_no": str(data.get("main_no", package.get("main_no", "")) or ""),
@@ -1446,6 +1477,26 @@ def _v12_load_history_record(record):
     for i in range(8):
         st.session_state[f"sticker_text_{i}"] = str(texts[i] if i < len(texts) else "")
 
+    _v12_clear_text_color_segments()
+    for item in metadata.get("sticker_color_segments", []) or []:
+        try:
+            si = int(item.get("sticker_index", 0)) - 1
+            ji = int(item.get("segment_index", 0)) - 1
+        except Exception:
+            continue
+        if 0 <= si < 8 and 0 <= ji < 3:
+            segs = _v12_get_color_segments(si)
+            segs[ji] = {
+                "text": str(item.get("text", "") or ""),
+                "color_name": str(item.get("color_name", "") or ""),
+                "hex": str(item.get("hex", "") or ""),
+            }
+            st.session_state[f"v12_text_color_count_{si}"] = max(
+                int(st.session_state.get(f"v12_text_color_count_{si}", 0)),
+                ji + 1
+            )
+            st.session_state[f"v12_text_color_enabled_{si}"] = True
+
 
 def _v12_delete_history_record(project_id):
     projects = list(st.session_state.get("v12_projects_local_index", []))
@@ -1494,6 +1545,9 @@ def _v12_project_snapshot():
         str(st.session_state.get(f"sticker_text_{i}", ""))
         for i in range(8)
     ]
+    project["sticker_color_segments"] = _v12_valid_color_segments(
+        project["sticker_texts"]
+    )
     project["transparent_background"] = bool(
         st.session_state.get("transparent_png_option", False)
     )
@@ -1556,6 +1610,84 @@ st.session_state.setdefault("generated_4x2_bytes", None)
 st.session_state.setdefault("last_prompt", "")
 st.session_state.setdefault("crop_boxes", None)
 
+# ============================================================
+# V12 試作版｜局部文字上色
+# 每格最多 3 段：使用者自行輸入文字片段，再用色卡點選顏色。
+# ============================================================
+V12_TEXT_COLOR_PALETTE = [
+    ("白色", "#FFFFFF", "⬜"),
+    ("黑色", "#111111", "⬛"),
+    ("紅色", "#F5222D", "🟥"),
+    ("橘色", "#FA8C16", "🟧"),
+    ("黃色", "#FADB14", "🟨"),
+    ("綠色", "#52C41A", "🟩"),
+    ("藍色", "#1677FF", "🟦"),
+    ("紫色", "#722ED1", "🟪"),
+]
+
+def _v12_default_color_segments():
+    return [{"text": "", "color_name": "", "hex": ""} for _ in range(3)]
+
+def _v12_init_color_segment_state():
+    for i in range(8):
+        st.session_state.setdefault(f"v12_text_color_enabled_{i}", False)
+        st.session_state.setdefault(f"v12_text_color_count_{i}", 0)
+        segs = st.session_state.get(f"v12_text_color_segments_{i}")
+        if not isinstance(segs, list):
+            segs = _v12_default_color_segments()
+        normalized = _v12_default_color_segments()
+        for j in range(min(3, len(segs))):
+            item = segs[j] if isinstance(segs[j], dict) else {}
+            normalized[j] = {
+                "text": str(item.get("text", "") or ""),
+                "color_name": str(item.get("color_name", "") or ""),
+                "hex": str(item.get("hex", "") or ""),
+            }
+        st.session_state[f"v12_text_color_segments_{i}"] = normalized
+
+def _v12_get_color_segments(i):
+    segs = st.session_state.get(f"v12_text_color_segments_{i}")
+    if not isinstance(segs, list):
+        segs = _v12_default_color_segments()
+        st.session_state[f"v12_text_color_segments_{i}"] = segs
+    return segs
+
+def _v12_set_segment_color(i, j, color_name, hex_code):
+    segs = _v12_get_color_segments(i)
+    if 0 <= j < 3:
+        segs[j]["color_name"] = str(color_name)
+        segs[j]["hex"] = str(hex_code)
+
+def _v12_valid_color_segments(texts):
+    out = []
+    for i in range(8):
+        source = str(texts[i] or "") if i < len(texts) else ""
+        if not source.strip():
+            continue
+        for j, seg in enumerate(_v12_get_color_segments(i)):
+            part = str(seg.get("text", "") or "").strip()
+            color_name = str(seg.get("color_name", "") or "").strip()
+            hex_code = str(seg.get("hex", "") or "").strip()
+            if part and color_name and hex_code and part in source:
+                out.append({
+                    "sticker_index": i + 1,
+                    "segment_index": j + 1,
+                    "text": part,
+                    "color_name": color_name,
+                    "hex": hex_code,
+                })
+    return out
+
+def _v12_clear_text_color_segments():
+    for i in range(8):
+        st.session_state[f"v12_text_color_enabled_{i}"] = False
+        st.session_state[f"v12_text_color_count_{i}"] = 0
+        st.session_state[f"v12_text_color_segments_{i}"] = _v12_default_color_segments()
+        for j in range(3):
+            st.session_state.pop(f"v12_text_color_segment_{i}_{j}", None)
+
+_v12_init_color_segment_state()
+
 def get_texts():
     return [st.session_state.get(f"sticker_text_{i}", "") for i in range(8)]
 
@@ -1563,6 +1695,8 @@ def set_texts(values):
     values = list(values)[:8] + [""] * 8
     for i in range(8):
         st.session_state[f"sticker_text_{i}"] = str(values[i])
+    # 批次換字後清除舊的局部上色，避免顏色片段與新文字不一致。
+    _v12_clear_text_color_segments()
 
 def base_boxes(w, h):
     boxes = []
@@ -1576,7 +1710,7 @@ def base_boxes(w, h):
     return boxes
 
 def build_prompt(style, custom_style, selected_character, custom_character,
-                 texts, transparent):
+                 texts, transparent, color_segments=None):
     p = [
         "請以我提供的人物照片作為主要人物參考。",
         "保留人物身份辨識特徵，不任意改變人物核心外觀。",
@@ -1600,6 +1734,18 @@ def build_prompt(style, custom_style, selected_character, custom_character,
         p.append(f"使用者自定人物／場景要求：{custom_character.strip()}。")
     for i, t in enumerate(texts):
         p.append(f"第{i+1}格的指定貼圖文字為：「{t.strip() or '（此格未指定文字）'}」。")
+
+    color_segments = color_segments or []
+    for item in color_segments:
+        p.append(
+            f"第{item['sticker_index']}格的文字片段「{item['text']}」"
+            f"必須使用{item['color_name']}（{item['hex']}）。"
+        )
+    if color_segments:
+        p.append(
+            "局部文字上色規則：只對上述指定文字片段套用指定顏色；"
+            "其他文字維持一般文字顏色。請不要自行增加其他彩色文字。"
+        )
     if transparent:
         p.append("請使用透明背景PNG，背景保持真正透明，不要以白色或黑色填滿。")
     p.append("整體具有LINE貼圖的清楚、可讀、可愛與完整構圖感。")
@@ -2079,14 +2225,97 @@ if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"
         ])
         st.rerun()
 
+def _v12_render_text_slot(i):
+    st.text_input(
+        f"{i+1:02d}",
+        key=f"sticker_text_{i}",
+        placeholder="例如：我知道你還有錢",
+    )
+
+    if st.checkbox(
+        "🎨 啟用局部文字上色",
+        key=f"v12_text_color_enabled_{i}",
+    ):
+        count = int(st.session_state.get(f"v12_text_color_count_{i}", 0))
+        if count < 1:
+            count = 1
+            st.session_state[f"v12_text_color_count_{i}"] = 1
+
+        st.caption("💡 輸入要變色的文字片段，再點選色卡；每格最多 3 段。")
+
+        for j in range(count):
+            segs = _v12_get_color_segments(i)
+            current = segs[j]
+            _a, _b = st.columns([1.35, 1])
+
+            with _a:
+                st.session_state.setdefault(
+                    f"v12_text_color_segment_{i}_{j}",
+                    current.get("text", ""),
+                )
+                st.text_input(
+                    f"文字片段 {j+1}",
+                    key=f"v12_text_color_segment_{i}_{j}",
+                    placeholder="例如：你還有",
+                )
+                segs[j]["text"] = str(
+                    st.session_state.get(f"v12_text_color_segment_{i}_{j}", "")
+                )
+
+            with _b:
+                st.markdown("**🎨 選擇顏色**")
+                color_cols = st.columns(4)
+                for k, (name, hex_code, icon) in enumerate(V12_TEXT_COLOR_PALETTE):
+                    with color_cols[k % 4]:
+                        label = f"{icon} {name}"
+                        if current.get("hex") == hex_code:
+                            label = f"✅ {name}"
+                        if st.button(
+                            label,
+                            key=f"v12_text_color_pick_{i}_{j}_{k}",
+                            use_container_width=True,
+                        ):
+                            _v12_set_segment_color(i, j, name, hex_code)
+                            st.rerun()
+
+                if current.get("color_name") and current.get("hex"):
+                    st.caption(f"目前：{current['color_name']}  `{current['hex']}`")
+                else:
+                    st.caption("尚未選擇顏色")
+
+        if count < 3:
+            if st.button(
+                "＋ 新增一段文字顏色",
+                key=f"v12_text_color_add_{i}",
+                use_container_width=True,
+            ):
+                st.session_state[f"v12_text_color_count_{i}"] = count + 1
+                st.rerun()
+
+        valid_here = [
+            x for x in _v12_valid_color_segments(get_texts())
+            if x["sticker_index"] == i + 1
+        ]
+        if valid_here:
+            st.success(
+                "🎨 已設定："
+                + "、".join(
+                    f"「{x['text']}」→ {x['color_name']} {x['hex']}"
+                    for x in valid_here
+                )
+            )
+        else:
+            st.info("請確認文字片段確實存在於上方的貼圖文字中，AI 才會套用顏色。")
+
 cols=st.columns(4)
 for i,col in enumerate(cols):
     with col:
-        st.text_input(f"{i+1:02d}",key=f"sticker_text_{i}")
+        _v12_render_text_slot(i)
+
 cols=st.columns(4)
 for i,col in enumerate(cols,start=4):
     with col:
-        st.text_input(f"{i+1:02d}",key=f"sticker_text_{i}")
+        _v12_render_text_slot(i)
 
 texts=get_texts()
 filled=sum(bool(x.strip()) for x in texts)
@@ -2313,8 +2542,16 @@ with st.container(key="transparent_png_option"):
 v10_subsection("🌈 貼圖設定查看", "#ff9f43")
 style_mode = st.session_state.get("v10_style_mode", "↓ 請選擇風格")
 
-prompt = build_prompt(style, custom_style, selected_character,
-                      custom_character, texts, transparent)
+_prompt_color_segments = _v12_valid_color_segments(texts)
+prompt = build_prompt(
+    style,
+    custom_style,
+    selected_character,
+    custom_character,
+    texts,
+    transparent,
+    color_segments=_prompt_color_segments,
+)
 
 if style_mode == V8_STYLE_CUSTOM_OPTION:
     prompt += (
