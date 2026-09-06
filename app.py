@@ -2754,6 +2754,114 @@ if st.session_state["v12_view"] == "library":
 st.markdown('<div id="v12-page-top"></div>', unsafe_allow_html=True)
 st.markdown('<div class="v10-main-title">🎨 LINE 貼圖創作工作室</div>', unsafe_allow_html=True)
 st.caption("V11｜公開版｜快速完成 LINE 貼圖創作")
+
+
+def _v12_sync_api_mode():
+    """把 API 使用模式同步到獨立 canonical Session state。"""
+    value = str(st.session_state.get("v12_api_mode_widget", "") or "")
+    if value not in _ALLOWED_API_MODES:
+        value = "🆓 使用網站免費額度"
+    st.session_state["v12_saved_api_mode"] = value
+    st.session_state["v11_api_mode"] = value
+
+def _v12_sync_user_api_key():
+    """把 API Key 同步到兩個 Session 狀態，避免 widget rerun 後遺失。"""
+    value = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+    st.session_state["v11_user_api_key"] = value
+    st.session_state["v12_saved_user_api_key"] = value
+
+
+# ============================================================
+# V11 STEP 02B-3A｜使用者自有 OpenAI API
+#
+# 安全原則：
+# 1. 預設仍使用網站免費額度。
+# 2. 使用者選擇「自己的 OpenAI API」後，不扣全站 10 次。
+# 3. API Key 僅放在目前 Streamlit Session。
+# 4. 不寫入 Supabase / JSON / GitHub / Streamlit Secrets。
+# 5. 預設隱碼；可由使用者自行切換顯示。
+# ============================================================
+v10_section("🤖 AI 生成方式", "#6366f1")
+st.caption("📌 選擇一種方式即可：使用網站免費額度，或使用自己的 OpenAI API。")
+
+# 重要：不要再直接把 radio 綁在 v11_api_mode。
+# 字型快速選擇／開關 125 種總覽都會觸發 Streamlit rerun，
+# 因此先由 canonical Session state 恢復 widget，再由 callback 寫回 canonical state。
+st.session_state["v12_api_mode_widget"] = st.session_state.get(
+    "v12_saved_api_mode", "🆓 使用網站免費額度"
+)
+_api_mode = st.radio(
+    "請選擇生成方式",
+    _ALLOWED_API_MODES,
+    key="v12_api_mode_widget",
+    on_change=_v12_sync_api_mode,
+)
+# 兼容原本其他程式區塊仍讀取 v11_api_mode。
+st.session_state["v11_api_mode"] = _api_mode
+st.session_state["v12_saved_api_mode"] = _api_mode
+
+# API 教學連結：固定顯示，讓不熟悉 API 的使用者也能先了解申請方式。
+st.link_button(
+    "申請API教學連結-**HKT實驗室**",
+    "https://vocus.cc/article/69ed5612fd897800010cffde",
+    type="primary",
+    use_container_width=True,
+    key="v12_api_help",
+)
+
+if _api_mode == "🆓 使用網站免費額度":
+    # 即使目前選免費模式，也保留 Session 中的自有 API Key，不因切換模式而清空。
+    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+    st.caption(
+        "🎁 圖片生成仍使用網站提供的每日 AI 額度；AI 文案助手目前暫時不限次數。"
+    )
+    _daily_quota = _show_daily_ai_quota()
+
+else:
+    st.caption(
+        "💡 適合需要較多生成次數的使用者；使用自己的 API 時，"
+        "不受網站每日 10 次額度限制。"
+    )
+
+    # 若 API Key widget 曾因切換模式 / rerun 被 Streamlit 暫時清除，
+    # 從獨立 Session backup 還原，再建立 text_input。
+    if not str(st.session_state.get("v11_user_api_key", "") or "").strip():
+        _saved_key = str(st.session_state.get("v12_saved_user_api_key", "") or "").strip()
+        if _saved_key:
+            st.session_state["v11_user_api_key"] = _saved_key
+
+    st.info(
+        "🔐 **隱私提醒**\n\n"
+        "本網站設計，只將這組 Key 提供目前這個瀏覽器暫時使用。"
+    )
+
+    _show_v11_key = st.checkbox(
+        "👁️ 顯示 API Key（再次點擊即可隱藏）",
+        value=False,
+        key="v11_show_api_key",
+    )
+
+    _v11_user_api_key = st.text_input(
+        "OpenAI API Key",
+        type="default" if _show_v11_key else "password",
+        placeholder="sk-••••••••••••••••••••",
+        key="v11_user_api_key",
+        help="請輸入你自己的 OpenAI API Key。",
+        on_change=_v12_sync_user_api_key,
+    ).strip()
+
+    # 以 Session 中的值作為後續圖片生成與 AI 文案助手的唯一來源。
+    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
+
+    if _v11_user_api_key:
+        st.success(
+            "🔒 已取得本次 Session 的 API Key。"
+            "使用「自己的 API」時，不受網站每日 10 次額度限制。"
+        )
+    else:
+        st.warning("⚠️ 請先輸入自己的 OpenAI API Key。")
+
+
 st.markdown("""
 <div class="v11-onboarding">
   <div class="v11-onboarding-title">✨ 第一次使用？照著 3 個步驟就可以開始</div>
@@ -3702,112 +3810,7 @@ with st.expander("🔍 點選查看貼圖設定"):
 
 
 
-def _v12_sync_api_mode():
-    """把 API 使用模式同步到獨立 canonical Session state。"""
-    value = str(st.session_state.get("v12_api_mode_widget", "") or "")
-    if value not in _ALLOWED_API_MODES:
-        value = "🆓 使用網站免費額度"
-    st.session_state["v12_saved_api_mode"] = value
-    st.session_state["v11_api_mode"] = value
-
-def _v12_sync_user_api_key():
-    """把 API Key 同步到兩個 Session 狀態，避免 widget rerun 後遺失。"""
-    value = str(st.session_state.get("v11_user_api_key", "") or "").strip()
-    st.session_state["v11_user_api_key"] = value
-    st.session_state["v12_saved_user_api_key"] = value
-
-
-# ============================================================
-# V11 STEP 02B-3A｜使用者自有 OpenAI API
-#
-# 安全原則：
-# 1. 預設仍使用網站免費額度。
-# 2. 使用者選擇「自己的 OpenAI API」後，不扣全站 10 次。
-# 3. API Key 僅放在目前 Streamlit Session。
-# 4. 不寫入 Supabase / JSON / GitHub / Streamlit Secrets。
-# 5. 預設隱碼；可由使用者自行切換顯示。
-# ============================================================
-v10_section("🤖 ⑦ AI 生成方式", "#6366f1")
-st.caption("📌 選擇一種方式即可：使用網站免費額度，或使用自己的 OpenAI API。")
-
-# 重要：不要再直接把 radio 綁在 v11_api_mode。
-# 字型快速選擇／開關 125 種總覽都會觸發 Streamlit rerun，
-# 因此先由 canonical Session state 恢復 widget，再由 callback 寫回 canonical state。
-st.session_state["v12_api_mode_widget"] = st.session_state.get(
-    "v12_saved_api_mode", "🆓 使用網站免費額度"
-)
-_api_mode = st.radio(
-    "請選擇生成方式",
-    _ALLOWED_API_MODES,
-    key="v12_api_mode_widget",
-    on_change=_v12_sync_api_mode,
-)
-# 兼容原本其他程式區塊仍讀取 v11_api_mode。
-st.session_state["v11_api_mode"] = _api_mode
-st.session_state["v12_saved_api_mode"] = _api_mode
-
-# API 教學連結：固定顯示，讓不熟悉 API 的使用者也能先了解申請方式。
-st.link_button(
-    "申請API教學連結-**HKT實驗室**",
-    "https://vocus.cc/article/69ed5612fd897800010cffde",
-    type="primary",
-    use_container_width=True,
-    key="v12_api_help",
-)
-
-if _api_mode == "🆓 使用網站免費額度":
-    # 即使目前選免費模式，也保留 Session 中的自有 API Key，不因切換模式而清空。
-    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
-    st.caption(
-        "🎁 圖片生成仍使用網站提供的每日 AI 額度；AI 文案助手目前暫時不限次數。"
-    )
-    _daily_quota = _show_daily_ai_quota()
-
-else:
-    st.caption(
-        "💡 適合需要較多生成次數的使用者；使用自己的 API 時，"
-        "不受網站每日 10 次額度限制。"
-    )
-
-    # 若 API Key widget 曾因切換模式 / rerun 被 Streamlit 暫時清除，
-    # 從獨立 Session backup 還原，再建立 text_input。
-    if not str(st.session_state.get("v11_user_api_key", "") or "").strip():
-        _saved_key = str(st.session_state.get("v12_saved_user_api_key", "") or "").strip()
-        if _saved_key:
-            st.session_state["v11_user_api_key"] = _saved_key
-
-    st.info(
-        "🔐 **隱私提醒**\n\n"
-        "本網站設計，只將這組 Key 提供目前這個瀏覽器暫時使用。"
-    )
-
-    _show_v11_key = st.checkbox(
-        "👁️ 顯示 API Key（再次點擊即可隱藏）",
-        value=False,
-        key="v11_show_api_key",
-    )
-
-    _v11_user_api_key = st.text_input(
-        "OpenAI API Key",
-        type="default" if _show_v11_key else "password",
-        placeholder="sk-••••••••••••••••••••",
-        key="v11_user_api_key",
-        help="請輸入你自己的 OpenAI API Key。",
-        on_change=_v12_sync_user_api_key,
-    ).strip()
-
-    # 以 Session 中的值作為後續圖片生成與 AI 文案助手的唯一來源。
-    _v11_user_api_key = str(st.session_state.get("v11_user_api_key", "") or "").strip()
-
-    if _v11_user_api_key:
-        st.success(
-            "🔒 已取得本次 Session 的 API Key。"
-            "使用「自己的 API」時，不受網站每日 10 次額度限制。"
-        )
-    else:
-        st.warning("⚠️ 請先輸入自己的 OpenAI API Key。")
-
-v10_section("✨ ⑧ 生成 4×2 原始總圖", "#e67e22")
+v10_section("✨ ⑦ 生成 4×2 原始總圖", "#e67e22")
 st.markdown('<div class="v11-section-tip">📌 <b>準備完成後：</b>按一次生成即可。生成期間按鈕會自動鎖定，請耐心等待。</div>', unsafe_allow_html=True)
 
 # ============================================================
@@ -4023,7 +4026,7 @@ if st.session_state.get("v11_generation_pending", False):
 # ------------------------------------------------------------
 if st.session_state.generated_4x2_bytes:
     st.divider()
-    v10_section("✂️ ⑦ 直接用滑鼠調整 8 個裁切框", "#e74c3c")
+    v10_section("✂️ ⑧ 直接用滑鼠調整 8 個裁切框", "#e74c3c")
 
     src = Image.open(BytesIO(st.session_state.generated_4x2_bytes)).convert("RGBA")
     w, h = src.size
