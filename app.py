@@ -1791,7 +1791,9 @@ def _v12_load_history_record(record):
 
     texts = list(metadata.get("sticker_texts") or [""] * 8)
     for i in range(8):
-        st.session_state[f"sticker_text_{i}"] = str(texts[i] if i < len(texts) else "")
+        value = str(texts[i] if i < len(texts) else "")
+        st.session_state[f"sticker_text_{i}"] = value
+        st.session_state[f"v12_sticker_text_widget_{i}"] = value
 
     _v12_clear_text_color_segments()
     for item in metadata.get("sticker_color_segments", []) or []:
@@ -1921,6 +1923,10 @@ def _v12_project_snapshot():
 
 for i in range(8):
     st.session_state.setdefault(f"sticker_text_{i}", "")
+    st.session_state.setdefault(
+        f"v12_sticker_text_widget_{i}",
+        st.session_state.get(f"sticker_text_{i}", ""),
+    )
 st.session_state.setdefault("uploaded_image_bytes", None)
 st.session_state.setdefault("generated_4x2_bytes", None)
 st.session_state.setdefault("last_prompt", "")
@@ -2008,13 +2014,21 @@ def _v12_clear_text_color_segments():
 
 _v12_init_color_segment_state()
 
+def _v12_sync_sticker_text(i):
+    """把文字輸入 widget 的值同步到不受條件式 rerun 影響的 canonical state。"""
+    key = f"v12_sticker_text_widget_{i}"
+    st.session_state[f"sticker_text_{i}"] = str(st.session_state.get(key, "") or "")
+
 def get_texts():
     return [st.session_state.get(f"sticker_text_{i}", "") for i in range(8)]
 
 def set_texts(values):
     values = list(values)[:8] + [""] * 8
     for i in range(8):
-        st.session_state[f"sticker_text_{i}"] = str(values[i])
+        value = str(values[i])
+        st.session_state[f"sticker_text_{i}"] = value
+        # 同步到實際輸入 widget，避免後續任何 rerun 讓 01～08 文字回復成空白。
+        st.session_state[f"v12_sticker_text_widget_{i}"] = value
     # 批次換字後清除舊的局部上色，避免顏色片段與新文字不一致。
     _v12_clear_text_color_segments()
 
@@ -2042,7 +2056,7 @@ V12_AI_COPY_TONES = [
     "😂 搞笑自然",
     "😤 憤憤不平",
     "😈 嘲諷吐槽",
-    "🫧 委屈可愛",
+    "☁️ 委屈可愛",
     "👑 霸氣有梗",
     "💬 台灣口語",
     "✨ 溫暖療癒",
@@ -2215,6 +2229,8 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     st.session_state["v12_ai_copy_topic_used"] = _topic
                     st.session_state["v12_ai_copy_tone_used"] = _tone
                     st.session_state["v12_ai_copy_selected"] = []
+                    for _i in range(16):
+                        st.session_state[f"v12_ai_copy_pick_{_i}"] = False
             except RuntimeError:
                 st.error("❌ AI 文案服務目前無法使用，請稍後再試。")
             except Exception:
@@ -2241,11 +2257,13 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         _cols = st.columns(4)
         for _idx, _phrase in enumerate(_candidates):
             with _cols[_idx % 4]:
-                _checked = _idx in _gen_selected
+                _pick_key = f"v12_ai_copy_pick_{_idx}"
+                # 先建立 widget state；這樣「全選／全部取消」改值後 rerun，
+                # checkbox 不會又讀回上一輪的舊狀態。
+                st.session_state.setdefault(_pick_key, _idx in _gen_selected)
                 if st.checkbox(
                     f"{_idx+1:02d}. {_phrase}",
-                    value=_checked,
-                    key=f"v12_ai_copy_pick_{_idx}",
+                    key=_pick_key,
                 ):
                     _new_gen_selected.append(_idx)
         st.session_state["v12_ai_copy_selected"] = _new_gen_selected
@@ -2254,11 +2272,16 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         _ga, _gb, _gc = st.columns(3)
         with _ga:
             if st.button("☑️ 全選", key="v12_ai_copy_select_all", use_container_width=True):
-                st.session_state["v12_ai_copy_selected"] = list(range(len(_candidates)))
+                _all_indices = list(range(len(_candidates)))
+                st.session_state["v12_ai_copy_selected"] = _all_indices
+                for _i in _all_indices:
+                    st.session_state[f"v12_ai_copy_pick_{_i}"] = True
                 st.rerun()
         with _gb:
             if st.button("↩️ 全部取消", key="v12_ai_copy_clear_all", use_container_width=True):
                 st.session_state["v12_ai_copy_selected"] = []
+                for _i in range(len(_candidates)):
+                    st.session_state[f"v12_ai_copy_pick_{_i}"] = False
                 st.rerun()
         with _gc:
             if st.button(
@@ -2903,12 +2926,12 @@ _v12_current_user_api_key = str(
     or ""
 ).strip()
 
-with st.expander("🤖 AI 幫想 8 句貼圖文字", expanded=False):
-    st.caption("📌 每次會先產生 16 句候選，再由你挑選 8 句。\n目前為測試階段，文案助手暫時不限次數，不占用網站每日 AI 額度。")
-    _v12_render_ai_copy_assistant(
-        _v12_current_api_mode,
-        _v12_current_user_api_key,
-    )
+v10_subsection("✨ AI 幫想 8 句貼圖文字", "#6366f1")
+st.caption("📌 每次會先產生 16 句候選，再由你挑選、儲存到主題用語池；文案助手目前暫時不限次數，不占用網站每日 AI 額度。")
+_v12_render_ai_copy_assistant(
+    _v12_current_api_mode,
+    _v12_current_user_api_key,
+)
 
 
 _pool_names=list(V8_RANDOM_POOLS.keys())
@@ -3003,10 +3026,23 @@ if _pool_choice not in ("⭐ 我的自定義語詞池", "↓ 請選擇語詞池"
         st.rerun()
 
 def _v12_render_text_slot(i):
+    _widget_key = f"v12_sticker_text_widget_{i}"
+    # 以獨立 widget key 保留輸入內容；canonical sticker_text_* 由 callback 同步。
+    st.session_state.setdefault(
+        _widget_key,
+        str(st.session_state.get(f"sticker_text_{i}", "") or ""),
+    )
     st.text_input(
         f"{i+1:02d}",
-        key=f"sticker_text_{i}",
+        key=_widget_key,
+        on_change=_v12_sync_sticker_text,
+        args=(i,),
         placeholder="例如：我知道你還有錢",
+    )
+    # 本輪 widget 可能剛被渲染；canonical state 直接取目前 widget 值，
+    # 確保後續局部上色 rerun 仍保有最新的 01～08 文字。
+    st.session_state[f"sticker_text_{i}"] = str(
+        st.session_state.get(_widget_key, "") or ""
     )
 
     if st.checkbox(
