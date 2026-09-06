@@ -1925,6 +1925,10 @@ st.session_state.setdefault("uploaded_image_bytes", None)
 st.session_state.setdefault("generated_4x2_bytes", None)
 st.session_state.setdefault("last_prompt", "")
 st.session_state.setdefault("crop_boxes", None)
+st.session_state.setdefault("v12_ai_copy_candidates", [])
+st.session_state.setdefault("v12_ai_copy_topic", "")
+st.session_state.setdefault("v12_ai_copy_tone", "😂 搞笑自然")
+st.session_state.setdefault("v12_ai_copy_selected", [])
 
 # ============================================================
 # V12 試作版｜局部文字上色
@@ -2025,8 +2029,208 @@ def base_boxes(w, h):
         boxes.append([x1, y1, x2, y2])
     return boxes
 
+# ============================================================
+# V12｜AI 貼圖文案助手 V1
+# - 使用 Responses API 進行「主題 → 情境延伸 → 16 句候選文案」
+# - 與 gpt-image-2 圖片生成分開，不改動原本圖片生成流程
+# - 網站免費模式：共用每日 AI 額度 1 次
+# - 自有 API 模式：使用使用者自己的 OpenAI API，不扣網站額度
+# ============================================================
+V12_AI_COPY_MODEL = "gpt-5.6-luna"
+V12_AI_COPY_TONES = [
+    "😂 搞笑自然",
+    "😤 憤憤不平",
+    "😈 嘲諷吐槽",
+    "🥹 委屈可愛",
+    "👑 霸氣有梗",
+    "💬 台灣口語",
+    "✨ 溫暖療癒",
+]
+
+def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
+    topic = str(topic or "").strip()
+    tone = str(tone or "").strip()
+    if not topic:
+        raise ValueError("missing_topic")
+
+    if api_mode == "🔑 使用自己的 OpenAI API":
+        if not user_api_key:
+            raise ValueError("missing_user_api_key")
+        _copy_client = OpenAI(api_key=user_api_key)
+    else:
+        _quota_claim = _consume_daily_ai_quota()
+        if not _quota_claim or not bool(_quota_claim.get("granted", False)):
+            raise RuntimeError("copy_quota_exhausted")
+        _copy_client = client
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "phrases": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 16,
+                "maxItems": 16,
+            }
+        },
+        "required": ["phrases"],
+        "additionalProperties": False,
+    }
+
+    system_prompt = (
+        "你是一位非常懂 LINE 貼圖的中文文案企劃。"
+        "你的任務不是寫文章，而是把使用者提供的一個主題，"
+        "延伸成日常聊天中真的會用到的貼圖情境，再寫出短、自然、有畫面感的貼圖文字。"
+        "請先在內部完成主題拆解與情境分布，但不要輸出你的分析過程；只輸出最後的 16 句候選文案。"
+        "16 句要有明顯不同的使用情境，例如：反應、吐槽、拒絕、驚訝、無奈、催促、開心、崩潰等，"
+        "不要只是同一句話換同義詞。"
+        "每句以 2～8 個中文字為優先，最多 10 個中文字；要像 LINE 對話，不要像標語、文章或解釋。"
+        "避免重複、避免過度正式、避免罕見書面語。"
+        "若主題帶有職業、身份或場景，請自然延伸該領域常見的生活情境。"
+        "不要加入編號、引號、emoji 或括號。"
+    )
+    user_prompt = (
+        f"使用者主題：{topic}\n"
+        f"希望的語氣方向：{tone}\n\n"
+        "請產生 16 句可直接拿來做 LINE 貼圖的候選文字。"
+        "請讓 16 句涵蓋不同情緒與情境，並保持同一主題世界觀。"
+    )
+
+    quota_claimed = api_mode != "🔑 使用自己的 OpenAI API"
+    try:
+        response = _copy_client.responses.create(
+            model=V12_AI_COPY_MODEL,
+            input=[
+                {"role": "developer", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "line_sticker_copy",
+                    "strict": True,
+                    "schema": schema,
+                }
+            },
+            max_output_tokens=700,
+        )
+        raw = str(response.output_text or "").strip()
+        data = json.loads(raw)
+        phrases = data.get("phrases", []) if isinstance(data, dict) else []
+        phrases = [str(x).strip() for x in phrases if str(x).strip()]
+        # 去除完全重複，但不足 16 句就視為本次失敗，避免半成品污染 UI。
+        phrases = list(dict.fromkeys(phrases))
+        if len(phrases) != 16:
+            raise ValueError("invalid_phrase_count")
+        return phrases
+    except Exception:
+        if quota_claimed:
+            _refund_daily_ai_quota()
+        raise
+
+
+def _v12_render_ai_copy_assistant(api_mode, user_api_key):
+    st.markdown(
+        """
+        <div style="max-width:1000px;margin:0 auto 12px;padding:14px 16px;
+        border:1px solid rgba(99,102,241,.25);border-radius:14px;
+        background:color-mix(in srgb,#6366f1 7%, transparent);">
+          <div style="font-size:19px;font-weight:800;margin-bottom:5px;">🤖 AI 幫你想貼圖文字</div>
+          <div style="line-height:1.65;opacity:.9;">
+            輸入一個主題，AI 會先延伸成不同生活情境，再一次給你 16 句候選文字，最後挑 8 句套用到貼圖。
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    _topic = st.text_input(
+        "💡 你想做什麼主題？",
+        key="v12_ai_copy_topic",
+        placeholder="例如：職場的憤憤不平、媽媽的日常、上班族週一症候群",
+    ).strip()
+    _tone = st.selectbox(
+        "🎭 希望文案是什麼感覺？",
+        V12_AI_COPY_TONES,
+        key="v12_ai_copy_tone",
+    )
+
+    _generate = st.button(
+        "✨ AI 幫我想 16 句",
+        type="primary",
+        use_container_width=True,
+        key="v12_ai_copy_generate",
+    )
+    if _generate:
+        if not _topic:
+            st.warning("請先輸入一個主題，例如「職場的憤憤不平」。")
+        elif api_mode == "🔑 使用自己的 OpenAI API" and not user_api_key:
+            st.error("❌ 請先輸入自己的 OpenAI API Key。")
+        else:
+            try:
+                with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
+                    _phrases = _v12_ai_copy_generate(
+                        _topic, _tone, api_mode, user_api_key
+                    )
+                st.session_state["v12_ai_copy_candidates"] = _phrases
+                st.session_state["v12_ai_copy_topic_used"] = _topic
+                st.session_state["v12_ai_copy_tone_used"] = _tone
+                st.session_state["v12_ai_copy_selected"] = list(range(8))
+                st.rerun()
+            except RuntimeError as exc:
+                if str(exc) == "copy_quota_exhausted":
+                    st.error("🔴 全站今日 AI 額度已用完，請明天再試。")
+                else:
+                    st.error("❌ AI 文案服務目前無法使用，請稍後再試。")
+            except Exception:
+                st.error("❌ AI 文案產生失敗，請稍後再試。")
+
+    _candidates = list(st.session_state.get("v12_ai_copy_candidates") or [])
+    if _candidates:
+        _used_topic = st.session_state.get("v12_ai_copy_topic_used", _topic)
+        _used_tone = st.session_state.get("v12_ai_copy_tone_used", _tone)
+        st.caption(f"本次主題：{_used_topic}　｜　語氣：{_used_tone}　｜　請從 16 句中選擇 8 句")
+
+        _selected = st.session_state.get("v12_ai_copy_selected")
+        if not isinstance(_selected, list):
+            _selected = list(range(min(8, len(_candidates))))
+        _selected = [int(i) for i in _selected if isinstance(i, int) and 0 <= i < len(_candidates)]
+
+        _new_selected = []
+        _cols = st.columns(4)
+        for _idx, _phrase in enumerate(_candidates):
+            with _cols[_idx % 4]:
+                _checked = _idx in _selected
+                if st.checkbox(
+                    f"{_idx+1:02d}. {_phrase}",
+                    value=_checked,
+                    key=f"v12_ai_copy_pick_{_idx}",
+                ):
+                    _new_selected.append(_idx)
+        _selected = _new_selected
+        st.session_state["v12_ai_copy_selected"] = _selected
+        st.caption(f"目前已選 {_selected.__len__()} / 8 句")
+
+        _a, _b = st.columns(2)
+        with _a:
+            if st.button("☑️ 前 8 句", key="v12_ai_copy_first8", use_container_width=True):
+                st.session_state["v12_ai_copy_selected"] = list(range(min(8, len(_candidates))))
+                st.rerun()
+        with _b:
+            if st.button("🎯 套用所選 8 句到 01～08", key="v12_ai_copy_apply", use_container_width=True):
+                if len(_selected) != 8:
+                    st.warning("請剛好選擇 8 句，再套用到 01～08。")
+                else:
+                    set_texts([_candidates[i] for i in _selected])
+                    st.session_state["v12_ai_copy_last_applied"] = True
+                    st.success("✅ 已將 AI 文案套用到 01～08 貼圖文字。")
+                    st.rerun()
+
+        if st.session_state.get("v12_ai_copy_last_applied", False):
+            st.caption("💡 已套用完成；你仍然可以手動修改 01～08 的任何一句。")
+            st.session_state["v12_ai_copy_last_applied"] = False
+
 def build_prompt(style, custom_style, selected_character, custom_character,
-                 texts, transparent, color_segments=None):
+                 texts, transparent, color_segments=None, ai_copy_topic="", ai_copy_tone=""):
     p = [
         "請以我提供的人物照片作為主要人物參考。",
         "保留人物身份辨識特徵，不任意改變人物核心外觀。",
@@ -2048,6 +2252,11 @@ def build_prompt(style, custom_style, selected_character, custom_character,
         p.append("人物與畫面特色：" + "、".join(selected_character) + "。")
     if custom_character.strip():
         p.append(f"使用者自定人物／場景要求：{custom_character.strip()}。")
+    if str(ai_copy_topic or "").strip():
+        p.append(f"AI 貼圖文案主題：{str(ai_copy_topic).strip()}。")
+        p.append("請把這個主題視為整組貼圖的情境世界觀，讓人物的服裝、動作、表情、道具與場景自然呼應主題。")
+    if str(ai_copy_tone or "").strip():
+        p.append(f"AI 貼圖文案語氣方向：{str(ai_copy_tone).strip()}。")
     for i, t in enumerate(texts):
         p.append(f"第{i+1}格的指定貼圖文字為：「{t.strip() or '（此格未指定文字）'}」。")
 
@@ -2449,6 +2658,15 @@ if st.button("💾 儲存人物／場景設定",key="v10_save_character",use_con
 
 v10_section("💬 ④ 01～08 貼圖文字", "#3498db")
 st.caption("🎲 內建語詞池＋你的專屬隨機語詞池。可新增、儲存，也可從池子隨機抽取。")
+
+# V12｜AI 貼圖文案助手 V1：只負責文字，不碰原本圖片生成流程。
+with st.expander("🤖 AI 幫想 8 句貼圖文字", expanded=False):
+    st.caption("📌 每次會先產生 16 句候選，再由你挑選 8 句。網站免費模式會使用 1 次每日 AI 額度。")
+    _v12_render_ai_copy_assistant(
+        st.session_state.get("v11_api_mode", "🆓 使用網站免費額度"),
+        str(st.session_state.get("v11_user_api_key", "") or "").strip(),
+    )
+
 
 _pool_names=list(V8_RANDOM_POOLS.keys())
 v10_subsection("🎲 隨機用語與自定義語詞池", "#3498db")
@@ -2936,6 +3154,8 @@ prompt = build_prompt(
     texts,
     transparent,
     color_segments=_prompt_color_segments,
+    ai_copy_topic=st.session_state.get("v12_ai_copy_topic_used", st.session_state.get("v12_ai_copy_topic", "")),
+    ai_copy_tone=st.session_state.get("v12_ai_copy_tone_used", st.session_state.get("v12_ai_copy_tone", "")),
 )
 
 if style_mode == V8_STYLE_CUSTOM_OPTION:
