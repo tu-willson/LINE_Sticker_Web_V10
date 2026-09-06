@@ -972,6 +972,286 @@ div[data-testid="stExpander"]{
   .v10-section{margin-top:2rem;}
   .v10-section-title{font-size:1.55rem;}
 }
+
+/* V12 試作版｜局部文字上色：色卡使用實際背景色，不依賴 emoji 色字。 */
+div[class*="st-key-v12_text_color_pick_"] button p{
+  color:transparent !important;
+  font-size:0 !important;
+}
+div[class*="st-key-v12_text_color_pick_"] button:hover{
+  filter:brightness(.92) !important;
+  transform:translateY(-1px);
+}
+div[class*="st-key-v12_text_color_pick_0_0_0"] button,
+div[class*="st-key-v12_text_color_pick_0_1_0"] button,
+div[class*="st-key-v12_text_color_pick_0_2_0"] button,
+div[class*="st-key-v12_text_color_pick_1_0_0"] button,
+div[class*="st-key-v12_text_color_pick_1_1_0"] button,
+div[class*="st-key-v12_text_color_pick_1_2_0"] button,
+div[class*="st-key-v12_text_color_pick_2_0_0"] button,
+div[class*="st-key-v12_text_color_pick_2_1_0"] button,
+div[class*="st-key-v12_text_color_pick_2_2_0"] button,
+div[class*="st-key-v12_text_color_pick_3_0_0"] button,
+div[class*="st-key-v12_text_color_pick_3_1_0"] button,
+div[class*="st-key-v12_text_color_pick_3_2_0"] button,
+div[class*="st-key-v12_text_color_pick_4_0_0"] button,
+div[class*="st-key-v12_text_color_pick_4_1_0"] button,
+div[class*="st-key-v12_text_color_pick_4_2_0"] button,
+div[class*="st-key-v12_text_color_pick_5_0_0"] button,
+div[class*="st-key-v12_text_color_pick_5_1_0"] button,
+div[class*="st-key-v12_text_color_pick_5_2_0"] button,
+div[class*="st-key-v12_text_color_pick_6_0_0"] button,
+div[class*="st-key-v12_text_color_pick_6_1_0"] button,
+div[class*="st-key-v12_text_color_pick_6_2_0"] button,
+div[class*="st-key-v12_text_color_pick_7_0_0"] button,
+div[class*="st-key-v12_text_color_pick_7_1_0"] button,
+div[class*="st-key-v12_text_color_pick_7_2_0"] button{
+  background:#FFFFFF !important;
+  background-color:#FFFFFF !important;
+  color:transparent !important;
+  border:2px solid #666666 !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_1"] button,
+div[class*="st-key-v12_text_color_pick_0_1_1"] button,
+div[class*="st-key-v12_text_color_pick_0_2_1"] button,
+div[class*="st-key-v12_text_color_pick_1_0_1"] button,
+div[class*="st-key-v12_text_color_pick_1_1_1"] button,
+div[class*="st-key-v12_text_color_pick_1_2_1"] button,
+div[class*="st-key-v12_text_color_pick_2_0_1"] button,
+div[class*="st-key-v12_text_color_pick_2_1_1"] button,
+div[class*="st-key-v12_text_color_pick_2_2_1"] button,
+div[class*="st-key-v12_text_color_pick_3_0_1"] button,
+div[class*="st-key-v12_text_color_pick_3_1_1"] button,
+div[class*="st-key-v12_text_color_pick_3_2_1"] button,
+div[class*="st-key-v12_text_color_pick_4_0_1"] button,
+div[class*="st-key-v12_text_color_pick_4_1_1"] button,
+div[class*="st-key-v12_text_color_pick_4_2_1"] button,
+div[class*="st-key-v12_text_color_pick_5_0_1"] button,
+div[class*="st-key-v12_text_color_pick_5_1_1"] button,
+div[class*="st-key-v12_text_color_pick_5_2_1"] button,
+div[class*="st-key-v12_text_color_pick_6_0_1"] button,
+div[class*="st-key-v12_text_color_pick_6_1_1"] button,
+div[class*="st-key-v12_text_color_pick_6_2_1"] button,
+div[class*="st-key-v12_text_color_pick_7_0_1"] button,
+div[class*="st-key-v12_text_color_pick_7_1_1"] button,
+div[class*="st-key-v12_text_color_pick_7_2_1"] button{
+  background:#111111 !important;
+  background-color:#111111 !important;
+  color:transparent !important;
+  border:2px solid #111111 !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_2"] button,
+div[class*="st-key-v12_text_color_pick_0_1_2"] button,
+div[class*="st-key-v12_text_color_pick_0_2_2"] button,
+div[class*="st-key-v12_text_color_pick_1_0_2"] button,
+div[class*="st-key-v12_text_color_pick_1_1_2"] button,
+div[class*="st-key-v12_text_color_pick_1_2_2"] button,
+div[class*="st-key-v12_text_color_pick_2_0_2"] button,
+div[class*="st-key-v12_text_color_pick_2_1_2"] button,
+div[class*="st-key-v12_text_color_pick_2_2_2"] button,
+div[class*="st-key-v12_text_color_pick_3_0_2"] button,
+div[class*="st-key-v12_text_color_pick_3_1_2"] button,
+div[class*="st-key-v12_text_color_pick_3_2_2"] button,
+div[class*="st-key-v12_text_color_pick_4_0_2"] button,
+div[class*="st-key-v12_text_color_pick_4_1_2"] button,
+div[class*="st-key-v12_text_color_pick_4_2_2"] button,
+div[class*="st-key-v12_text_color_pick_5_0_2"] button,
+div[class*="st-key-v12_text_color_pick_5_1_2"] button,
+div[class*="st-key-v12_text_color_pick_5_2_2"] button,
+div[class*="st-key-v12_text_color_pick_6_0_2"] button,
+div[class*="st-key-v12_text_color_pick_6_1_2"] button,
+div[class*="st-key-v12_text_color_pick_6_2_2"] button,
+div[class*="st-key-v12_text_color_pick_7_0_2"] button,
+div[class*="st-key-v12_text_color_pick_7_1_2"] button,
+div[class*="st-key-v12_text_color_pick_7_2_2"] button{
+  background:#F5222D !important;
+  background-color:#F5222D !important;
+  color:transparent !important;
+  border:2px solid #F5222D !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_3"] button,
+div[class*="st-key-v12_text_color_pick_0_1_3"] button,
+div[class*="st-key-v12_text_color_pick_0_2_3"] button,
+div[class*="st-key-v12_text_color_pick_1_0_3"] button,
+div[class*="st-key-v12_text_color_pick_1_1_3"] button,
+div[class*="st-key-v12_text_color_pick_1_2_3"] button,
+div[class*="st-key-v12_text_color_pick_2_0_3"] button,
+div[class*="st-key-v12_text_color_pick_2_1_3"] button,
+div[class*="st-key-v12_text_color_pick_2_2_3"] button,
+div[class*="st-key-v12_text_color_pick_3_0_3"] button,
+div[class*="st-key-v12_text_color_pick_3_1_3"] button,
+div[class*="st-key-v12_text_color_pick_3_2_3"] button,
+div[class*="st-key-v12_text_color_pick_4_0_3"] button,
+div[class*="st-key-v12_text_color_pick_4_1_3"] button,
+div[class*="st-key-v12_text_color_pick_4_2_3"] button,
+div[class*="st-key-v12_text_color_pick_5_0_3"] button,
+div[class*="st-key-v12_text_color_pick_5_1_3"] button,
+div[class*="st-key-v12_text_color_pick_5_2_3"] button,
+div[class*="st-key-v12_text_color_pick_6_0_3"] button,
+div[class*="st-key-v12_text_color_pick_6_1_3"] button,
+div[class*="st-key-v12_text_color_pick_6_2_3"] button,
+div[class*="st-key-v12_text_color_pick_7_0_3"] button,
+div[class*="st-key-v12_text_color_pick_7_1_3"] button,
+div[class*="st-key-v12_text_color_pick_7_2_3"] button{
+  background:#FA8C16 !important;
+  background-color:#FA8C16 !important;
+  color:transparent !important;
+  border:2px solid #FA8C16 !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_4"] button,
+div[class*="st-key-v12_text_color_pick_0_1_4"] button,
+div[class*="st-key-v12_text_color_pick_0_2_4"] button,
+div[class*="st-key-v12_text_color_pick_1_0_4"] button,
+div[class*="st-key-v12_text_color_pick_1_1_4"] button,
+div[class*="st-key-v12_text_color_pick_1_2_4"] button,
+div[class*="st-key-v12_text_color_pick_2_0_4"] button,
+div[class*="st-key-v12_text_color_pick_2_1_4"] button,
+div[class*="st-key-v12_text_color_pick_2_2_4"] button,
+div[class*="st-key-v12_text_color_pick_3_0_4"] button,
+div[class*="st-key-v12_text_color_pick_3_1_4"] button,
+div[class*="st-key-v12_text_color_pick_3_2_4"] button,
+div[class*="st-key-v12_text_color_pick_4_0_4"] button,
+div[class*="st-key-v12_text_color_pick_4_1_4"] button,
+div[class*="st-key-v12_text_color_pick_4_2_4"] button,
+div[class*="st-key-v12_text_color_pick_5_0_4"] button,
+div[class*="st-key-v12_text_color_pick_5_1_4"] button,
+div[class*="st-key-v12_text_color_pick_5_2_4"] button,
+div[class*="st-key-v12_text_color_pick_6_0_4"] button,
+div[class*="st-key-v12_text_color_pick_6_1_4"] button,
+div[class*="st-key-v12_text_color_pick_6_2_4"] button,
+div[class*="st-key-v12_text_color_pick_7_0_4"] button,
+div[class*="st-key-v12_text_color_pick_7_1_4"] button,
+div[class*="st-key-v12_text_color_pick_7_2_4"] button{
+  background:#FADB14 !important;
+  background-color:#FADB14 !important;
+  color:transparent !important;
+  border:2px solid #FADB14 !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_5"] button,
+div[class*="st-key-v12_text_color_pick_0_1_5"] button,
+div[class*="st-key-v12_text_color_pick_0_2_5"] button,
+div[class*="st-key-v12_text_color_pick_1_0_5"] button,
+div[class*="st-key-v12_text_color_pick_1_1_5"] button,
+div[class*="st-key-v12_text_color_pick_1_2_5"] button,
+div[class*="st-key-v12_text_color_pick_2_0_5"] button,
+div[class*="st-key-v12_text_color_pick_2_1_5"] button,
+div[class*="st-key-v12_text_color_pick_2_2_5"] button,
+div[class*="st-key-v12_text_color_pick_3_0_5"] button,
+div[class*="st-key-v12_text_color_pick_3_1_5"] button,
+div[class*="st-key-v12_text_color_pick_3_2_5"] button,
+div[class*="st-key-v12_text_color_pick_4_0_5"] button,
+div[class*="st-key-v12_text_color_pick_4_1_5"] button,
+div[class*="st-key-v12_text_color_pick_4_2_5"] button,
+div[class*="st-key-v12_text_color_pick_5_0_5"] button,
+div[class*="st-key-v12_text_color_pick_5_1_5"] button,
+div[class*="st-key-v12_text_color_pick_5_2_5"] button,
+div[class*="st-key-v12_text_color_pick_6_0_5"] button,
+div[class*="st-key-v12_text_color_pick_6_1_5"] button,
+div[class*="st-key-v12_text_color_pick_6_2_5"] button,
+div[class*="st-key-v12_text_color_pick_7_0_5"] button,
+div[class*="st-key-v12_text_color_pick_7_1_5"] button,
+div[class*="st-key-v12_text_color_pick_7_2_5"] button{
+  background:#52C41A !important;
+  background-color:#52C41A !important;
+  color:transparent !important;
+  border:2px solid #52C41A !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_6"] button,
+div[class*="st-key-v12_text_color_pick_0_1_6"] button,
+div[class*="st-key-v12_text_color_pick_0_2_6"] button,
+div[class*="st-key-v12_text_color_pick_1_0_6"] button,
+div[class*="st-key-v12_text_color_pick_1_1_6"] button,
+div[class*="st-key-v12_text_color_pick_1_2_6"] button,
+div[class*="st-key-v12_text_color_pick_2_0_6"] button,
+div[class*="st-key-v12_text_color_pick_2_1_6"] button,
+div[class*="st-key-v12_text_color_pick_2_2_6"] button,
+div[class*="st-key-v12_text_color_pick_3_0_6"] button,
+div[class*="st-key-v12_text_color_pick_3_1_6"] button,
+div[class*="st-key-v12_text_color_pick_3_2_6"] button,
+div[class*="st-key-v12_text_color_pick_4_0_6"] button,
+div[class*="st-key-v12_text_color_pick_4_1_6"] button,
+div[class*="st-key-v12_text_color_pick_4_2_6"] button,
+div[class*="st-key-v12_text_color_pick_5_0_6"] button,
+div[class*="st-key-v12_text_color_pick_5_1_6"] button,
+div[class*="st-key-v12_text_color_pick_5_2_6"] button,
+div[class*="st-key-v12_text_color_pick_6_0_6"] button,
+div[class*="st-key-v12_text_color_pick_6_1_6"] button,
+div[class*="st-key-v12_text_color_pick_6_2_6"] button,
+div[class*="st-key-v12_text_color_pick_7_0_6"] button,
+div[class*="st-key-v12_text_color_pick_7_1_6"] button,
+div[class*="st-key-v12_text_color_pick_7_2_6"] button{
+  background:#1677FF !important;
+  background-color:#1677FF !important;
+  color:transparent !important;
+  border:2px solid #1677FF !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+div[class*="st-key-v12_text_color_pick_0_0_7"] button,
+div[class*="st-key-v12_text_color_pick_0_1_7"] button,
+div[class*="st-key-v12_text_color_pick_0_2_7"] button,
+div[class*="st-key-v12_text_color_pick_1_0_7"] button,
+div[class*="st-key-v12_text_color_pick_1_1_7"] button,
+div[class*="st-key-v12_text_color_pick_1_2_7"] button,
+div[class*="st-key-v12_text_color_pick_2_0_7"] button,
+div[class*="st-key-v12_text_color_pick_2_1_7"] button,
+div[class*="st-key-v12_text_color_pick_2_2_7"] button,
+div[class*="st-key-v12_text_color_pick_3_0_7"] button,
+div[class*="st-key-v12_text_color_pick_3_1_7"] button,
+div[class*="st-key-v12_text_color_pick_3_2_7"] button,
+div[class*="st-key-v12_text_color_pick_4_0_7"] button,
+div[class*="st-key-v12_text_color_pick_4_1_7"] button,
+div[class*="st-key-v12_text_color_pick_4_2_7"] button,
+div[class*="st-key-v12_text_color_pick_5_0_7"] button,
+div[class*="st-key-v12_text_color_pick_5_1_7"] button,
+div[class*="st-key-v12_text_color_pick_5_2_7"] button,
+div[class*="st-key-v12_text_color_pick_6_0_7"] button,
+div[class*="st-key-v12_text_color_pick_6_1_7"] button,
+div[class*="st-key-v12_text_color_pick_6_2_7"] button,
+div[class*="st-key-v12_text_color_pick_7_0_7"] button,
+div[class*="st-key-v12_text_color_pick_7_1_7"] button,
+div[class*="st-key-v12_text_color_pick_7_2_7"] button{
+  background:#722ED1 !important;
+  background-color:#722ED1 !important;
+  color:transparent !important;
+  border:2px solid #722ED1 !important;
+  box-shadow:0 0 0 1px rgba(128,128,128,.18) inset !important;
+  min-height:52px !important;
+  border-radius:11px !important;
+}
+
+@media (max-width:640px){
+  div[class*="st-key-v12_text_color_pick_"] button{
+    min-height:48px !important;
+  }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
