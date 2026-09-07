@@ -2067,7 +2067,7 @@ def base_boxes(w, h):
     return boxes
 
 # ============================================================
-# V12｜AI 貼圖文案自由創作測試版 V1
+# V12｜AI 貼圖文案雙 AI 編劇＋觀眾測試版 V3
 # - 使用 Responses API 進行「主題 → 情境延伸 → 16 句候選文案」
 # - 與 gpt-image-2 圖片生成分開，不改動原本圖片生成流程
 # - AI 文案助手測試階段：暫時不扣網站每日 AI 額度，開放不限次數
@@ -2075,7 +2075,13 @@ def base_boxes(w, h):
 # - 後續可再獨立加入「5 分鐘冷卻」限制，不與圖片生成額度綁定
 # ============================================================
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
+
 def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
+    """V3｜雙階段 AI 文案測試：
+    AI ① 編劇：先大量發想 48 個不同角度的生活化候選。
+    AI ② 觀眾／編輯：不看創作過程，只從候選中殘酷淘汰，最後交付 16 句。
+    目的不是湊滿 16 句，而是提高「真的會拿來當 LINE 貼圖」的比例。
+    """
     topic = str(topic or "").strip()
     if not topic:
         raise ValueError("missing_topic")
@@ -2087,82 +2093,136 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     else:
         _copy_client = client
 
-    schema = {
-        "type": "object",
-        "properties": {
-            "phrases": {
-                "type": "array",
-                "items": {"type": "string"},
-                "minItems": 16,
-                "maxItems": 16,
-            }
-        },
-        "required": ["phrases"],
-        "additionalProperties": False,
-    }
-
-    # V2 核心：不是「想到 16 句」，而是先像脫口秀編劇大量發想，
-    # 再像觀眾與貼圖編輯一樣逐句淘汰。最終只交付 16 句。
-    system_prompt = (
-        "你是 LINE 貼圖的資深文案總監，同時扮演三個角色：脫口秀編劇、真實觀眾、貼圖編輯。"
-        "使用者只給你一個主題，你不能要求使用者先指定情緒；你要自己找出這個主題最有趣、最真實、最值得拿來聊天的切入點。"
-        "重要：你不是在介紹主題，也不是列出與主題有關的名詞；你是在模擬一個人身處這個主題情境時，會忍不住脫口而出的那一句話。"
-        "先在內部把主題拆成多個真實生活場景、人物反應、尷尬點、荒謬點、反差、抱怨、期待、失望、自嘲、吐槽與意外瞬間。"
-        "再在內部一次大量創作至少 50 個候選，故意嘗試不同笑點與使用時機；不要把這些內部候選輸出。"
-        "接著扮演觀眾逐句審查：看到這句是否會有『哈哈這就是我』、『太真實了』、『這句可以直接傳出去』的感覺？"
-        "再扮演 LINE 貼圖編輯逐句審查：是否短、自然、有畫面、看一眼就懂、可以直接當聊天反應，而且比普通口語更有記憶點？"
-        "淘汰以下類型：只是描述主題、節慶常識、活動清單、食物清單、漂亮但空泛的句子、老套網路語、單純換同義詞、同一笑點換說法、必須搭配圖片才看得懂、像文章或標語。"
-        "特別避免把『中秋』寫成月餅／烤肉／月亮的資料整理；如果主題是節日，要優先寫『人在節日裡真正會說的話』。"
-        "特別避免把『碎碎念』理解成很多小事羅列；要把它理解成有個性、有情緒、有反差的生活吐槽或心聲。"
-        "每句以 2～8 個中文字為優先，最多 10 個中文字；口語自然，可以有台灣聊天感，但不要刻意塞台語或網路流行語。"
-        "16 句必須有明顯不同的使用時機與笑點來源；不要為了湊滿 16 句而降低品質。"
-        "如果某一句單獨拿出來，放到十個不同主題都成立，就代表太泛，應淘汰或重寫。"
-        "不要加入編號、引號、emoji、括號或解釋，只輸出最後 16 句。"
-    )
-
     _avoid = [str(x).strip() for x in (avoid_phrases or []) if str(x).strip()]
     _avoid = list(dict.fromkeys(_avoid))[:32]
     avoid_block = ""
     if _avoid:
         avoid_block = (
-            "\n\n以下是上一輪已經出現過的文案。這次不只不能重複字面，"
-            "連同一個笑點、同一個情境、同一種表達方式都要盡量避開，請換新的角度：\n"
+            "\n\n上一輪已經出現過這些句子：\n"
             + "、".join(_avoid)
+            + "\n這一輪必須刻意換不同的生活情境、笑點與表達角度；不要只是把原句換同義詞。"
         )
 
-    user_prompt = (
-        f"使用者主題：{topic}\n\n"
-        "請交付最終 16 句 LINE 貼圖文案。"
-        "先在內部大量發想與審稿，不要輸出分析過程。"
-        "優先找『只有這個主題才會出現』的真實生活瞬間，讓每句都有可想像的使用畫面。"
-        "最終結果寧可犀利、生活化、帶一點意外，也不要安全但普通。"
+    # ------------------------------------------------------------
+    # AI ①：只負責創作，不負責湊最後 16 句。
+    # ------------------------------------------------------------
+    writer_schema = {
+        "type": "object",
+        "properties": {
+            "candidates": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 48,
+                "maxItems": 48,
+            }
+        },
+        "required": ["candidates"],
+        "additionalProperties": False,
+    }
+
+    writer_prompt = (
+        "你是台灣 LINE 貼圖的頂尖喜劇文案創作者。"
+        "你的工作不是把主題拆成知識，也不是把關鍵字硬湊成句子；你的工作是找出『真人在這個情境裡真的會脫口而出，而且別人看到會有感』的話。"
+        "\n\n先理解主題，再從不同人生場景找笑點：真實經驗、尷尬、反差、荒謬、自嘲、嘴硬、無奈、慾望、失算、社交瞬間、家庭互動、職場互動、朋友互動等。"
+        "不要預設情緒比例，也不要為了涵蓋類別而硬塞內容。"
+        "\n\n請先創作 48 個候選，故意走不同角度。這 48 個不是要全部合格，而是要提供另一位觀眾／編輯足夠素材來挑選。"
+        "候選必須像『人說的話』，不是廣告標語、文章標題、四字成語、節慶祝福或主題摘要。"
+        "可以白爛、嘴砲、犀利、可愛、無奈、荒謬，但不要為了搞笑硬塞網路梗。"
+        "如果一句話放到十個完全不同的主題都成立，就太泛；請換成更具體的生活瞬間。"
+        "不要因為要短就犧牲自然度；以適合 LINE 對話的短句為主，大約 2～10 個中文字，必要時可以稍長一點。"
+        "不要編號、不要引號、不要 emoji、不要解釋。"
         + avoid_block
     )
 
     try:
-        response = _copy_client.responses.create(
+        writer_response = _copy_client.responses.create(
             model=V12_AI_COPY_MODEL,
             input=[
-                {"role": "developer", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
+                {"role": "developer", "content": writer_prompt},
+                {"role": "user", "content": f"主題：{topic}\n請先創作 48 個候選，不要做最後篩選。"},
             ],
             text={
                 "format": {
                     "type": "json_schema",
-                    "name": "line_sticker_copy",
+                    "name": "line_sticker_copy_writer",
                     "strict": True,
-                    "schema": schema,
+                    "schema": writer_schema,
+                }
+            },
+            max_output_tokens=2600,
+        )
+        writer_raw = str(writer_response.output_text or "").strip()
+        writer_data = json.loads(writer_raw)
+        candidates = writer_data.get("candidates", []) if isinstance(writer_data, dict) else []
+        candidates = [str(x).strip() for x in candidates if str(x).strip()]
+        candidates = list(dict.fromkeys(candidates))
+        if len(candidates) < 32:
+            raise ValueError("writer_too_few_candidates")
+        candidates = candidates[:48]
+
+        # --------------------------------------------------------
+        # AI ②：完全站在觀眾與編輯立場，只負責淘汰與精修。
+        # 不把「一定 16 句」當成創作指標；若候選太弱，優先保留最強的，
+        # 並只對少數接近及格的句子做自然重寫。
+        # --------------------------------------------------------
+        critic_schema = {
+            "type": "object",
+            "properties": {
+                "final_phrases": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 16,
+                    "maxItems": 16,
+                }
+            },
+            "required": ["final_phrases"],
+            "additionalProperties": False,
+        }
+
+        numbered_candidates = "\n".join(
+            f"{i+1}. {phrase}" for i, phrase in enumerate(candidates)
+        )
+        critic_prompt = (
+            "你是第二位 AI：一名很挑剔的 LINE 貼圖觀眾兼資深文案編輯。"
+            "第一位 AI 已經丟給你一批候選，你現在不是幫他補數量，而是要把爛的淘汰掉。"
+            "\n\n請逐句用以下標準判斷："
+            "像不像真人會說？看到會不會有『太真實了』或『這句我會用』的反應？"
+            "是否有具體畫面？是否有記憶點？是否有自然的情緒或反差？是否真的適合 LINE 對話？"
+            "如果只是把主題關鍵字換句話說、只是普通陳述、只是食物／活動清單、只是硬塞笑點、只是漂亮但空泛，就淘汰。"
+            "同一個笑點、同一個場景、同一種句型只留最強的一個。"
+            "\n\n非常重要：不要因為候選不足就用普通句子湊數。你可以從最好的候選中挑選，也可以把少數『概念很好但措辭差一點』的候選自然改寫成更像真人脫口而出的版本。"
+            "改寫時必須保留原本的具體笑點，不可以把它改回空泛的安全句。"
+            "如果某句已經很好，就原樣保留。"
+            "\n\n最後交付 16 句。16 句應該像一組真正可以拿去做 LINE 貼圖的文案，而不是 16 個主題相關句子。"
+            "不要輸出評分、淘汰原因或分析，只輸出 final_phrases。"
+            "不要編號、引號、emoji、括號或解釋。"
+        )
+        critic_response = _copy_client.responses.create(
+            model=V12_AI_COPY_MODEL,
+            input=[
+                {"role": "developer", "content": critic_prompt},
+                {
+                    "role": "user",
+                    "content": f"主題：{topic}\n\n第一位 AI 的候選：\n{numbered_candidates}\n\n請像真實觀眾一樣殘酷淘汰，最後只交付最值得留下的 16 句。",
+                },
+            ],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "line_sticker_copy_critic",
+                    "strict": True,
+                    "schema": critic_schema,
                 }
             },
             max_output_tokens=1800,
         )
-        raw = str(response.output_text or "").strip()
-        data = json.loads(raw)
-        phrases = data.get("phrases", []) if isinstance(data, dict) else []
+        critic_raw = str(critic_response.output_text or "").strip()
+        critic_data = json.loads(critic_raw)
+        phrases = critic_data.get("final_phrases", []) if isinstance(critic_data, dict) else []
         phrases = [str(x).strip() for x in phrases if str(x).strip()]
         phrases = list(dict.fromkeys(phrases))
         if len(phrases) != 16:
-            raise ValueError("invalid_phrase_count")
+            raise ValueError("critic_invalid_phrase_count")
         return phrases
     except Exception:
         raise
@@ -2224,7 +2284,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                 if _live_api_mode == "🔑 使用自己的 OpenAI API" and not _live_user_api_key:
                     st.error("❌ 請先輸入自己的 OpenAI API Key。")
                 else:
-                    with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
+                    with st.spinner("🎤 第一位 AI 正在發想，接著交給第二位 AI 審稿……"):
                         _previous_phrases = list(st.session_state.get("v12_ai_copy_candidates") or [])
                         _phrases = _v12_ai_copy_generate(
                             _topic, _live_api_mode, _live_user_api_key, _previous_phrases
@@ -2248,7 +2308,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     if _candidates:
         _used_topic = str(st.session_state.get("v12_ai_copy_topic_used", "") or "").strip()
         st.markdown("#### 🆕 本次 AI 生成結果")
-        st.caption(f"主題：{_used_topic}　｜　AI 自動判斷情緒、語氣與情境　｜　請勾選想保存的文案")
+        st.caption(f"主題：{_used_topic}　｜　AI 編劇先大量發想，再由 AI 觀眾＋編輯淘汰　｜　請勾選想保存的文案")
 
         _gen_selected = st.session_state.get("v12_ai_copy_selected", [])
         if not isinstance(_gen_selected, list):
