@@ -2067,19 +2067,69 @@ def base_boxes(w, h):
     return boxes
 
 # ============================================================
-# V12｜AI 自然口語測試版 V4
-# - 使用 Responses API 進行「主題 → 情境延伸 → 16 句候選文案」
-# - 與 gpt-image-2 圖片生成分開，不改動原本圖片生成流程
-# - AI 文案助手測試階段：暫時不扣網站每日 AI 額度，開放不限次數
-# - 自有 API 模式：使用使用者自己的 OpenAI API，不扣網站額度
-# - 後續可再獨立加入「5 分鐘冷卻」限制，不與圖片生成額度綁定
+# V12｜AI 情境對話測試版 V6
+# 核心：
+# 1. 主題只是背景。
+# 2. 使用者可以選擇生活情境，幫 AI 找到「這句話是在什麼對話裡說的」。
+# 3. AI 產生的是可直接放進 LINE 對話裡的短句，而不是主題文案。
+# 4. 避開既有 300+ 常用語／自訂語詞，降低與原有詞庫的重複。
+# 5. 不再提供「希望文案是什麼感覺」的情緒選項。
+# 6. 測試階段：AI 文案助手暫時不扣網站每日 AI 額度。
 # ============================================================
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
 
-def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
-    """V5｜自然對話型 AI 文案。
-    核心不是「寫主題文案」，而是「想像 LINE 對話裡，人會怎麼回」。
-    主題只提供情境背景；文字本身以自然、簡短、可直接回話為最高優先。
+V12_AI_COPY_SCENARIO_OPTIONS = [
+    "👥 朋友聊天",
+    "❤️ 情侶互動",
+    "🏠 家人互動",
+    "🏫 校園生活",
+    "💼 職場互動",
+    "📱 群組聊天",
+    "🍔 吃飯約人",
+    "🛍️ 購物消費",
+    "🚗 出門約人",
+    "🎉 節日活動",
+    "😴 懶得動／懶得回",
+    "💬 日常閒聊",
+]
+
+def _v12_collect_existing_phrase_library():
+    """整理 V12 既有常用語、隨機詞池、自訂詞池，提供給 AI 做重複避讓。"""
+    values = []
+    try:
+        values.extend(COMMON_PHRASES)
+    except Exception:
+        pass
+    try:
+        for _pool_values in V8_RANDOM_POOLS.values():
+            values.extend(_pool_values)
+    except Exception:
+        pass
+    try:
+        values.extend(st.session_state.get("public02a_custom_phrases", []) or [])
+    except Exception:
+        pass
+    # 既有主題用語池也視為「已經有的內容」，避免 AI 一直重新生成。
+    try:
+        for _theme_values in st.session_state.get("v12_theme_pools", {}).values():
+            values.extend(_theme_values or [])
+    except Exception:
+        pass
+    return list(dict.fromkeys(
+        str(x).strip() for x in values if str(x).strip()
+    ))
+
+def _v12_ai_copy_generate(
+    topic,
+    api_mode,
+    user_api_key,
+    scenarios=None,
+    avoid_phrases=None,
+):
+    """V6｜AI 情境對話生成。
+
+    不是要求 AI 寫「主題文案」，而是讓 AI 想像真實 LINE 對話，
+    根據指定生活情境找出自然、短、可直接回覆別人的句子。
     """
     topic = str(topic or "").strip()
     if not topic:
@@ -2092,14 +2142,39 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     else:
         _copy_client = client
 
-    _avoid = [str(x).strip() for x in (avoid_phrases or []) if str(x).strip()]
-    _avoid = list(dict.fromkeys(_avoid))[:32]
+    _scenarios = [
+        str(x).strip() for x in (scenarios or [])
+        if str(x).strip()
+    ][:4]
+
+    # 優先避開使用者既有詞庫，再加上本次前一輪結果。
+    _existing = _v12_collect_existing_phrase_library()
+    _avoid = list(dict.fromkeys(
+        [str(x).strip() for x in (avoid_phrases or []) if str(x).strip()]
+        + _existing
+    ))
+
+    # 避免 Prompt 過長：既有詞庫取前 420 個即可；這不是「只檢查這些」，
+    # AI 同時被要求自行避免同義／高度相似表達。
+    _avoid = _avoid[:420]
     avoid_block = ""
     if _avoid:
         avoid_block = (
-            "\n\n上一輪已經出現過的文字：\n"
+            "\n\n【已存在於貼圖工具中的文字，請盡量不要重複】\n"
             + "、".join(_avoid)
-            + "\n這一輪請換不同的日常對話內容；不要重複原句，也不要只做同義詞替換。"
+            + "\n請避開完全相同、只換一兩個字、或語意高度相似的句子。"
+        )
+
+    if _scenarios:
+        scenario_text = "、".join(_scenarios)
+        scenario_instruction = (
+            f"使用者指定的生活情境：{scenario_text}\n"
+            "請把這些情境當成『對話發生的場合』，不是把情境名稱寫進每一句。"
+        )
+    else:
+        scenario_instruction = (
+            "使用者沒有指定生活情境。請從主題中自然找出最常見的日常聊天場合，"
+            "但不要為了湊數刻意製造奇怪場景。"
         )
 
     schema = {
@@ -2117,29 +2192,33 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     }
 
     prompt = (
-        "你是『LINE 日常對話文字助手』。\n"
-        "你的工作不是寫文案、金句、笑話、標語，也不是描述主題；你的工作是想像真實 LINE 聊天，"
-        "替使用者準備一些『可以直接拿來回別人的話』。\n\n"
-        "使用者提供的主題只是這組貼圖的生活背景。請先在心中想像這個主題下可能發生的日常對話，"
-        "再從不同的對話時刻挑出 16 句最自然的回覆。不要把思考過程輸出。\n\n"
-        "最高優先原則：像真人聊天 > 有創意 > 有笑點。\n"
-        "看到一句話時，要讓人覺得『這句我平常真的會傳』，而不是『這句是在替這個主題寫文案』。\n\n"
-        "文字可以是非常簡單的回覆，例如：好啊、可以啊、等等我、我到了、真的嗎、不要啦、先不要、"
-        "我不知道、再看看、晚點再說、你先去、我不行、沒事啦、怎麼了、吃了嗎。"
-        "不需要每句都這麼短，但不要為了增加內容而把簡單的話硬寫長。\n\n"
-        "請特別遵守：\n"
-        "1. 主題是背景，不是每句文字都要提到主題。\n"
-        "2. 優先生成『對答、回覆、反應、邀約、拒絕、確認、詢問、等待、關心、結束對話』這類真正聊天會出現的語句。\n"
-        "3. 每一句都想像前面真的有人傳了一句訊息；如果這句話很自然地可以接在後面，就保留。\n"
-        "4. 不要刻意搞笑，不要刻意做梗，不要追求金句，不要文青，不要廣告腔，不要像社群貼文。\n"
-        "5. 不要為了湊 16 句而硬造句子。寧可普通、口語、生活化，也不要奇怪或做作。\n"
-        "6. 不要只是把同一句話換幾個字；16 句應該來自不同的日常對話時刻。\n"
-        "7. 不要寫需要特定畫面才能理解的台詞。例如『拜託不要再切了』這類必須先知道有人正在做某個動作的句子，除非它本身就是很常見的日常回覆。\n"
-        "8. 不要寫節慶標語、祝福語、口號或主題介紹，除非使用者的主題本身就是要做這類文字。\n"
-        "9. 可以出現很普通的話；『自然好用』比『看起來有梗』重要。\n"
-        "10. 以台灣繁體中文的自然口語為主，避免生硬書面語。\n\n"
-        "字數沒有硬性限制，以一句聊天訊息能自然傳出去為準；通常短句優先，但不要為了短而變得不自然。\n\n"
-        "最後請只輸出 16 句文字的 JSON，不要輸出編號、引號、emoji、括號、說明或分析。"
+        "你是『LINE 真實對話用語助手』。\n"
+        "你現在不是文案作家、廣告文案師、段子手，也不是散文作者。"
+        "你要做的事情，是替 LINE 使用者準備一批可以直接拿來回訊息的貼圖文字。\n\n"
+        f"主題背景：{topic}\n"
+        f"{scenario_instruction}\n\n"
+        "【最重要的創作原則】\n"
+        "1. 把自己想像成一個每天真的在用 LINE 的台灣人。\n"
+        "2. 想像真實聊天正在進行：朋友、家人、同學、同事、另一半正在傳訊息，"
+        "而這張貼圖就是我要按下去回他的話。\n"
+        "3. 優先產生『回覆』，而不是『描述』。例如：好啊、等我、還沒、真的嗎、不要啦、哪裡、"
+        "我也要、先不要、可以啊、你先去。這些只是語感方向，不是叫你重複這些例句。\n"
+        "4. 句子可以很普通。自然、順口、真的用得出去，比創意、金句、笑點重要。\n"
+        "5. 以短句為主，通常 1～8 個中文字即可；只有真的像聊天才可以更長。\n"
+        "6. 不要寫作文、散文、完整敘述、心得、旁白、口號、標語、廣告詞、網路貼文。\n"
+        "7. 不要刻意搞笑，不要硬製造梗，不要為了顯得有趣而奇怪地比喻。\n"
+        "8. 不要每一句都提到主題；主題只是在幫你找生活情境。\n"
+        "9. 不要把『情境』直接當成句子。例如主題是校園，不要一直寫『校園生活真有趣』；"
+        "應該寫成聊天時真的會說的『你到了嗎？』『等我一下』『我也要去』這類語言。\n"
+        "10. 產生 16 句時，不要把同一個句型換幾個字湊數；每句應該有實際的聊天用途。\n"
+        "11. 最後請自己快速檢查每一句：『如果朋友剛傳了一句訊息，我真的會直接傳這句回去嗎？』"
+        "如果答案是否定的，就換掉它。\n"
+        "12. 既有詞庫已經有很多通用基本款，所以這次更應該從指定情境中找『有實際使用價值、"
+        "但現有詞庫比較沒有的說法』，不要只是把既有詞語換同義詞。\n\n"
+        "【禁止】\n"
+        "不要出現編號、引號、emoji、括號、解釋或分析。\n"
+        "不要為了 16 句而硬湊；如果某個方向很普通，就換另一個真實聊天場合。\n\n"
+        "最後只輸出 16 句 JSON。"
         + avoid_block
     )
 
@@ -2151,14 +2230,15 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
                 "role": "user",
                 "content": (
                     f"主題：{topic}\n"
-                    "請提供 16 句自然、簡短、生活化、可以直接拿來回 LINE 訊息的貼圖文字。"
+                    f"情境：{'、'.join(_scenarios) if _scenarios else '請自行找最自然的日常情境'}\n"
+                    "請給我 16 句可以直接拿來回 LINE 訊息的貼圖文字。"
                 ),
             },
         ],
         text={
             "format": {
                 "type": "json_schema",
-                "name": "line_sticker_copy_dialogue",
+                "name": "line_sticker_copy_scenario_dialogue",
                 "strict": True,
                 "schema": schema,
             }
@@ -2177,37 +2257,57 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
 
 
 def _v12_render_ai_copy_assistant(api_mode, user_api_key):
-    """V12｜AI 自然對話文案助手＋多主題暫存池（Session-only）。
-    規則：主題只在使用者完成 AI 生成並選擇儲存文案後建立；
-    每次 AI 產生 16 句，使用者可只勾選想保存的句子；
-    每個主題最多 30 句；本次創作最多同時使用 3 個已建立主題；
-    最後從已選主題的詞語池中挑選 8 句套用到 01～08。
-    """
+    """V6｜AI 情境對話文案助手＋多主題暫存池（Session-only）。"""
     st.session_state.setdefault("v12_theme_pools", {})
     st.session_state.setdefault("v12_selected_themes", [])
     st.session_state.setdefault("v12_ai_copy_candidates", [])
     st.session_state.setdefault("v12_ai_copy_selected", [])
     st.session_state.setdefault("v12_ai_copy_topic", "")
     st.session_state.setdefault("v12_ai_copy_topic_used", "")
+    st.session_state.setdefault("v12_ai_copy_scenarios", [])
+    st.session_state.setdefault("v12_ai_copy_scenarios_used", [])
 
-    # ------------------------------------------------------------
-    # ① 主題：這裡只是「創作輸入」，不會因為打字就自動建立主題。
-    #    只有 AI 生成後，使用者實際儲存至少一個文案時，才建立主題。
-    # ------------------------------------------------------------
-    _topic_before = str(st.session_state.get("v12_ai_copy_topic", "") or "").strip()
+    _topic_before = str(
+        st.session_state.get("v12_ai_copy_topic", "") or ""
+    ).strip()
     _topic = st.text_input(
         "💡 你想做什麼主題？",
         key="v12_ai_copy_topic",
-        placeholder="例如：醫師日常篇、情侶吵架篇、媽媽的日常",
+        placeholder="例如：校園日常、月底沒錢、中秋節碎碎念",
     ).strip()
 
-    # 使用者修改尚未建立的創作主題時，清除上一批候選文案，避免拿舊主題的結果誤存到新主題。
     if _topic != _topic_before:
         st.session_state["v12_ai_copy_candidates"] = []
         st.session_state["v12_ai_copy_selected"] = []
-        # 主題改變時，舊一批 16 句的 checkbox 狀態也一併清除。
+        st.session_state["v12_ai_copy_scenarios_used"] = []
         for _i in range(16):
             st.session_state.pop(f"v12_ai_copy_pick_{_i}", None)
+
+    st.markdown("##### 🎬 要加入什麼生活情境？")
+    st.caption(
+        "情境是幫 AI 找到「這句話是在什麼聊天裡說的」；"
+        "不需要選也可以，讓 AI 自己判斷。最多選 3 個。"
+    )
+    _scenario_options = ["🤖 讓 AI 自己找情境"] + V12_AI_COPY_SCENARIO_OPTIONS
+    _current_scenarios = [
+        x for x in st.session_state.get("v12_ai_copy_scenarios", [])
+        if x in V12_AI_COPY_SCENARIO_OPTIONS
+    ][:3]
+
+    _scenario_values = st.multiselect(
+        "生活情境",
+        options=_scenario_options,
+        default=_current_scenarios if _current_scenarios else ["🤖 讓 AI 自己找情境"],
+        key="v12_ai_copy_scenarios",
+        label_visibility="collapsed",
+        max_selections=3,
+    )
+    if "🤖 讓 AI 自己找情境" in _scenario_values:
+        _scenario_values = []
+        st.session_state["v12_ai_copy_scenarios"] = []
+        st.caption("🤖 本次由 AI 自己判斷最自然的聊天情境。")
+    else:
+        st.caption("🎬 本次情境：" + "、".join(_scenario_values))
 
     _generate = st.button(
         "✨ AI 幫我想 16 句",
@@ -2217,46 +2317,71 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     )
     if _generate:
         if not _topic:
-            st.warning("請先輸入一個主題，例如「職場的憤憤不平」。")
+            st.warning("請先輸入一個主題，例如「校園日常」。")
         elif api_mode == "🔑 使用自己的 OpenAI API" and not user_api_key:
             st.error("❌ 請先輸入自己的 OpenAI API Key。")
         else:
             try:
-                _live_api_mode = st.session_state.get("v12_saved_api_mode", api_mode)
+                _live_api_mode = st.session_state.get(
+                    "v12_saved_api_mode", api_mode
+                )
                 _live_user_api_key = str(
                     st.session_state.get("v11_user_api_key")
                     or st.session_state.get("v12_saved_user_api_key")
                     or user_api_key
                     or ""
                 ).strip()
-                if _live_api_mode == "🔑 使用自己的 OpenAI API" and not _live_user_api_key:
+                if (
+                    _live_api_mode == "🔑 使用自己的 OpenAI API"
+                    and not _live_user_api_key
+                ):
                     st.error("❌ 請先輸入自己的 OpenAI API Key。")
                 else:
-                    with st.spinner("💬 AI 正在整理這個主題的日常說法……"):
-                        _previous_phrases = list(st.session_state.get("v12_ai_copy_candidates") or [])
+                    with st.spinner("💬 AI 正在把主題放進真實聊天情境……"):
+                        _previous_phrases = list(
+                            st.session_state.get("v12_ai_copy_candidates") or []
+                        )
                         _phrases = _v12_ai_copy_generate(
-                            _topic, _live_api_mode, _live_user_api_key, _previous_phrases
+                            _topic,
+                            _live_api_mode,
+                            _live_user_api_key,
+                            scenarios=_scenario_values,
+                            avoid_phrases=_previous_phrases,
                         )
                     st.session_state["v12_ai_copy_candidates"] = _phrases
                     st.session_state["v12_ai_copy_topic_used"] = _topic
+                    st.session_state["v12_ai_copy_scenarios_used"] = list(
+                        _scenario_values
+                    )
                     st.session_state["v12_ai_copy_selected"] = []
                     for _i in range(16):
                         st.session_state[f"v12_ai_copy_pick_{_i}"] = False
             except RuntimeError:
                 st.error("❌ AI 文案服務目前無法使用，請稍後再試。")
             except Exception as _e:
-                # 測試版顯示簡短錯誤原因，方便定位 API / JSON / 輸出長度問題。
                 st.error("❌ AI 文案產生失敗，請稍後再試。")
-                st.caption(f"測試資訊：{type(_e).__name__} — {str(_e)[:220]}")
+                st.caption(
+                    f"測試資訊：{type(_e).__name__} — {str(_e)[:220]}"
+                )
 
-    # ------------------------------------------------------------
-    # ③ 本次 AI 生成結果：只勾選想保存的，不自動建立主題或全部進池。
-    # ------------------------------------------------------------
     _candidates = list(st.session_state.get("v12_ai_copy_candidates") or [])
     if _candidates:
-        _used_topic = str(st.session_state.get("v12_ai_copy_topic_used", "") or "").strip()
+        _used_topic = str(
+            st.session_state.get("v12_ai_copy_topic_used", "") or ""
+        ).strip()
+        _used_scenarios = list(
+            st.session_state.get("v12_ai_copy_scenarios_used") or []
+        )
         st.markdown("#### 🆕 本次 AI 生成結果")
-        st.caption(f"主題：{_used_topic}　｜　以日常對話、自然回覆為核心　｜　請勾選想保存的文案")
+        _scenario_caption = (
+            "AI 自己判斷情境"
+            if not _used_scenarios
+            else "、".join(_used_scenarios)
+        )
+        st.caption(
+            f"主題：{_used_topic}　｜　情境：{_scenario_caption}　｜　"
+            "請勾選想保存的文案"
+        )
 
         _gen_selected = st.session_state.get("v12_ai_copy_selected", [])
         if not isinstance(_gen_selected, list):
@@ -2266,17 +2391,18 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
             if isinstance(i, int) and 0 <= i < len(_candidates)
         ]
 
-        # 「全選／全部取消」必須在 checkbox widget 建立前修改 widget state。
-        # 使用 on_click callback，避免 Streamlit 在 widget 已建立後再次寫入同一個 key，
-        # 造成 StreamlitWidgetAlreadyInstantiatedError。
         def _v12_ai_copy_select_all_cb():
-            _indices = list(range(len(st.session_state.get("v12_ai_copy_candidates") or [])))
+            _indices = list(
+                range(len(st.session_state.get("v12_ai_copy_candidates") or []))
+            )
             st.session_state["v12_ai_copy_selected"] = _indices
             for _i in _indices:
                 st.session_state[f"v12_ai_copy_pick_{_i}"] = True
 
         def _v12_ai_copy_clear_all_cb():
-            _count = len(st.session_state.get("v12_ai_copy_candidates") or [])
+            _count = len(
+                st.session_state.get("v12_ai_copy_candidates") or []
+            )
             st.session_state["v12_ai_copy_selected"] = []
             for _i in range(_count):
                 st.session_state[f"v12_ai_copy_pick_{_i}"] = False
@@ -2285,7 +2411,6 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         for _idx, _phrase in enumerate(_candidates):
             with _cols[_idx % 4]:
                 _pick_key = f"v12_ai_copy_pick_{_idx}"
-                # 此處仍可安全初始化，因為 callback 已在本次 rerun 開始前執行。
                 if _pick_key not in st.session_state:
                     st.session_state[_pick_key] = _idx in _gen_selected
                 st.checkbox(
@@ -2293,10 +2418,13 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     key=_pick_key,
                 )
 
-        # 以 widget 的最新值重新整理目前選擇。
         _new_gen_selected = [
             _idx for _idx in range(len(_candidates))
-            if bool(st.session_state.get(f"v12_ai_copy_pick_{_idx}", False))
+            if bool(
+                st.session_state.get(
+                    f"v12_ai_copy_pick_{_idx}", False
+                )
+            )
         ]
         st.session_state["v12_ai_copy_selected"] = _new_gen_selected
         st.caption(f"本次準備保存：{len(_new_gen_selected)} / 16 句")
@@ -2336,8 +2464,10 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                         st.warning(f"⚠️「{_used_topic}」主題用語池已達上限 30 句。")
                     elif len(_new_unique) > _remaining:
                         st.warning(
-                            f"⚠️「{_used_topic}」目前已有 {len(_pool)}/30 句，這次最多還能儲存 {_remaining} 句。\n"
-                            f"目前勾選 {len(_new_unique)} 句，請取消 {len(_new_unique)-_remaining} 句後再儲存。"
+                            f"⚠️「{_used_topic}」目前已有 {len(_pool)}/30 句，"
+                            f"這次最多還能儲存 {_remaining} 句。\n"
+                            f"目前勾選 {len(_new_unique)} 句，請取消 "
+                            f"{len(_new_unique)-_remaining} 句後再儲存。"
                         )
                     elif not _new_unique:
                         st.info("ℹ️ 勾選的文案都已存在於這個主題用語池，不會重複儲存。")
@@ -2345,9 +2475,10 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                         _pool.extend(_new_unique)
                         _pools[_used_topic] = _pool[:30]
 
-                        # 只有在真正儲存文案後，才建立主題紀錄。
                         _selected = [
-                            x for x in st.session_state.get("v12_selected_themes", [])
+                            x for x in st.session_state.get(
+                                "v12_selected_themes", []
+                            )
                             if x in _pools
                         ][:3]
                         if _used_topic not in _selected and len(_selected) < 3:
@@ -2359,16 +2490,11 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                             f"目前 {len(_pools[_used_topic])}/30 句。"
                         )
 
-    # ------------------------------------------------------------
-    # ④ 主題用語池：只有真正儲存過文案的主題才會出現在這裡。
-    #    每個主題可勾選「加入本次創作」，最多同時 3 個主題。
-    # ------------------------------------------------------------
     st.markdown("#### 📚 主題用語池")
     _pool_themes = list(st.session_state["v12_theme_pools"].keys())
     if not _pool_themes:
         st.info("目前尚未建立主題用語池。先輸入主題、生成 16 句，再勾選想保存的文案即可。")
     else:
-        # 清掉已不存在的選擇，並限制最多 3 個。
         st.session_state["v12_selected_themes"] = [
             x for x in st.session_state.get("v12_selected_themes", [])
             if x in _pool_themes
@@ -2383,10 +2509,15 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
             _pool = list(st.session_state["v12_theme_pools"].get(_theme, []))[:30]
             _theme_key = f"v12_theme_use_{_theme_i}"
             if _theme_key not in st.session_state:
-                st.session_state[_theme_key] = _theme in st.session_state["v12_selected_themes"]
+                st.session_state[_theme_key] = (
+                    _theme in st.session_state["v12_selected_themes"]
+                )
 
             _currently_selected = _theme in st.session_state["v12_selected_themes"]
-            _can_select = _currently_selected or len(st.session_state["v12_selected_themes"]) < 3
+            _can_select = (
+                _currently_selected
+                or len(st.session_state["v12_selected_themes"]) < 3
+            )
             _use_theme = st.checkbox(
                 f"🎯 加入本次創作：{_theme}（{len(_pool)}/30）",
                 key=_theme_key,
@@ -2398,10 +2529,16 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     st.session_state["v12_selected_themes"].append(_theme)
                 else:
                     st.session_state[_theme_key] = False
-            elif not _use_theme and _theme in st.session_state["v12_selected_themes"]:
+            elif (
+                not _use_theme
+                and _theme in st.session_state["v12_selected_themes"]
+            ):
                 st.session_state["v12_selected_themes"].remove(_theme)
 
-            with st.expander(f"📚 {_theme}｜{len(_pool)}/30 句", expanded=False):
+            with st.expander(
+                f"📚 {_theme}｜{len(_pool)}/30 句",
+                expanded=False,
+            ):
                 if not _pool:
                     st.caption("目前沒有保存的文案。")
                 else:
@@ -2423,19 +2560,20 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                             use_container_width=True,
                         ):
                             _remaining_pool = [
-                                x for i, x in enumerate(_pool) if i not in _delete_refs
+                                x for i, x in enumerate(_pool)
+                                if i not in _delete_refs
                             ]
-                            st.session_state["v12_theme_pools"][_theme] = _remaining_pool
+                            st.session_state["v12_theme_pools"][_theme] = (
+                                _remaining_pool
+                            )
                             st.success(f"✅ 已刪除 {len(_delete_refs)} 句。")
                             st.rerun()
 
         st.caption(
-            f"🎯 本次創作已選擇：{len(st.session_state['v12_selected_themes'])} / 3 個主題"
+            f"🎯 本次創作已選擇："
+            f"{len(st.session_state['v12_selected_themes'])} / 3 個主題"
         )
 
-    # ------------------------------------------------------------
-    # ⑤ 從本次已選的最多 3 個主題中挑最終 8 句。
-    # ------------------------------------------------------------
     st.markdown("#### 🎯 從已選主題用語池選擇 8 句")
     _active_selected_themes = [
         x for x in st.session_state.get("v12_selected_themes", [])
@@ -2447,14 +2585,17 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         _final_refs = st.session_state.get("v12_theme_final_selected", [])
         if not isinstance(_final_refs, list):
             _final_refs = []
-        _current_refs = []
         _final_new = []
         for _si, _theme in enumerate(_active_selected_themes):
-            _pool = list(st.session_state["v12_theme_pools"].get(_theme, []))[:30]
-            with st.expander(f"{_theme}｜{len(_pool)}/30 句", expanded=True):
+            _pool = list(
+                st.session_state["v12_theme_pools"].get(_theme, [])
+            )[:30]
+            with st.expander(
+                f"{_theme}｜{len(_pool)}/30 句",
+                expanded=True,
+            ):
                 for _pi, _phrase in enumerate(_pool):
                     _ref = f"{_theme}\x1f{_pi}"
-                    _current_refs.append(_ref)
                     _checked = _ref in _final_refs
                     if st.checkbox(
                         _phrase,
@@ -2463,7 +2604,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     ):
                         _final_new.append(_ref)
         st.session_state["v12_theme_final_selected"] = _final_new
-        st.caption(f"目前已選 {_final_new.__len__()} / 8 句")
+        st.caption(f"目前已選 {len(_final_new)} / 8 句")
         if len(_final_new) > 8:
             st.warning("⚠️ 最多只能選 8 句，請取消多出的選項。")
         if st.button(
@@ -2481,7 +2622,8 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     ):
                         _phrase_map[f"{_theme}\x1f{_pi}"] = _phrase
                 _final_phrases = [
-                    _phrase_map[_ref] for _ref in _final_new if _ref in _phrase_map
+                    _phrase_map[_ref] for _ref in _final_new
+                    if _ref in _phrase_map
                 ]
                 if len(_final_phrases) == 8:
                     set_texts(_final_phrases)
@@ -2493,7 +2635,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         st.session_state["v12_ai_copy_last_applied"] = False
 
 def build_prompt(style, custom_style, selected_character, custom_character,
-                 texts, transparent, color_segments=None, ai_copy_topic="", ai_copy_tone="", ai_copy_topics=None):
+                 texts, transparent, color_segments=None, ai_copy_topic="", ai_copy_tone="", ai_copy_topics=None, ai_copy_scenarios=None):
     p = [
         "請以我提供的人物照片作為主要人物參考。",
         "保留人物身份辨識特徵，不任意改變人物核心外觀。",
@@ -2521,8 +2663,9 @@ def build_prompt(style, custom_style, selected_character, custom_character,
     if _topic_list:
         p.append("AI 貼圖創作主題（本次最多三個主題共同參考）：" + "、".join(dict.fromkeys(_topic_list)) + "。")
         p.append("本次貼圖可同時採用上述多個主題；它們不是互相衝突的不同世界，而是同一套貼圖的不同主題切面。請依各格文字情境自然參考相關主題，並維持整組人物與視覺一致性。")
-    if str(ai_copy_tone or "").strip():
-        p.append(f"AI 貼圖文案語氣方向：{str(ai_copy_tone).strip()}。")
+    _scenario_list = [str(x).strip() for x in (ai_copy_scenarios or []) if str(x).strip()]
+    if _scenario_list:
+        p.append(f"AI 貼圖文案生活情境：{'、'.join(_scenario_list)}。請讓人物表情、動作、道具與場景自然配合這些情境，但不要把情境名稱當成貼圖文字。")
     for i, t in enumerate(texts):
         p.append(f"第{i+1}格的指定貼圖文字為：「{t.strip() or '（此格未指定文字）'}」。")
 
@@ -3616,8 +3759,9 @@ prompt = build_prompt(
     transparent,
     color_segments=_prompt_color_segments,
     ai_copy_topic=st.session_state.get("v12_ai_copy_topic_used", st.session_state.get("v12_ai_copy_topic", "")),
-    ai_copy_tone=st.session_state.get("v12_ai_copy_tone_used", st.session_state.get("v12_ai_copy_tone", "")),
+    ai_copy_tone="",
     ai_copy_topics=st.session_state.get("v12_selected_themes", []),
+    ai_copy_scenarios=st.session_state.get("v12_ai_copy_scenarios_used", st.session_state.get("v12_ai_copy_scenarios", [])),
 )
 
 if style_mode == V8_STYLE_CUSTOM_OPTION:
