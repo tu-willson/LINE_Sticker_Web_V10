@@ -2077,9 +2077,9 @@ def base_boxes(w, h):
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
 
 def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
-    """V4｜自然口語型 AI 文案：
-    不做脫口秀、不做刻意梗、不做情緒配額。
-    目標是產生像真人日常聊天會說的 LINE 貼圖短句。
+    """V5｜自然對話型 AI 文案。
+    核心不是「寫主題文案」，而是「想像 LINE 對話裡，人會怎麼回」。
+    主題只提供情境背景；文字本身以自然、簡短、可直接回話為最高優先。
     """
     topic = str(topic or "").strip()
     if not topic:
@@ -2097,9 +2097,9 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     avoid_block = ""
     if _avoid:
         avoid_block = (
-            "\n\n前一輪已經產生過的句子如下：\n"
+            "\n\n上一輪已經出現過的文字：\n"
             + "、".join(_avoid)
-            + "\n這一輪請自然換一批表達方式；不要重複原句，也不要只是把原句換成同義詞。"
+            + "\n這一輪請換不同的日常對話內容；不要重複原句，也不要只做同義詞替換。"
         )
 
     schema = {
@@ -2117,16 +2117,29 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     }
 
     prompt = (
-        "你是 LINE 貼圖文字助手。你的任務不是寫廣告文案、金句或笑話，而是替使用者把『平常真的會想說的話』說出來。"
-        "\n\n使用者只提供一個主題。請先理解這個主題可能出現的日常生活情境，再自然產生 16 句可以直接拿來聊天的貼圖文字。"
-        "不要刻意搞笑，不要刻意製造梗，不要追求文青感，不要為了有創意而奇怪，不要把每一句都寫成笑話。"
-        "\n\n最重要的標準是『像真人』：像台灣人平常在 LINE、朋友群組、家人對話、同事聊天時會脫口而出的話。"
-        "可以有抱怨、開心、無奈、拒絕、撒嬌、驚訝、期待、碎念、自嘲等不同日常反應，但不要為了湊情緒種類而硬塞。"
-        "\n\n不要把主題拆成關鍵字清單。不要只是把主題換句話說。不要大量重複同一種句型。不要寫成標語、標題、祝福詞、文章句子或商品文案。"
-        "如果一句話很普通，但非常自然、非常適合聊天，就保留；如果一句話看起來很有梗，但不像真人會說，就不要。"
-        "\n\n以短句為主，但不要死守字數。自然度比長短更重要。一般約 2～10 個中文字，必要時可稍長，只要讀起來像真人說話即可。"
-        "\n\n想像這些文字真的會印在一張貼圖上：看到人物的表情或動作時，文字可以很自然地補上那個人當下想說的話。"
-        "\n\n不要輸出編號、引號、emoji、括號、解釋或分析，只輸出 16 句文字。"
+        "你是『LINE 日常對話文字助手』。\n"
+        "你的工作不是寫文案、金句、笑話、標語，也不是描述主題；你的工作是想像真實 LINE 聊天，"
+        "替使用者準備一些『可以直接拿來回別人的話』。\n\n"
+        "使用者提供的主題只是這組貼圖的生活背景。請先在心中想像這個主題下可能發生的日常對話，"
+        "再從不同的對話時刻挑出 16 句最自然的回覆。不要把思考過程輸出。\n\n"
+        "最高優先原則：像真人聊天 > 有創意 > 有笑點。\n"
+        "看到一句話時，要讓人覺得『這句我平常真的會傳』，而不是『這句是在替這個主題寫文案』。\n\n"
+        "文字可以是非常簡單的回覆，例如：好啊、可以啊、等等我、我到了、真的嗎、不要啦、先不要、"
+        "我不知道、再看看、晚點再說、你先去、我不行、沒事啦、怎麼了、吃了嗎。"
+        "不需要每句都這麼短，但不要為了增加內容而把簡單的話硬寫長。\n\n"
+        "請特別遵守：\n"
+        "1. 主題是背景，不是每句文字都要提到主題。\n"
+        "2. 優先生成『對答、回覆、反應、邀約、拒絕、確認、詢問、等待、關心、結束對話』這類真正聊天會出現的語句。\n"
+        "3. 每一句都想像前面真的有人傳了一句訊息；如果這句話很自然地可以接在後面，就保留。\n"
+        "4. 不要刻意搞笑，不要刻意做梗，不要追求金句，不要文青，不要廣告腔，不要像社群貼文。\n"
+        "5. 不要為了湊 16 句而硬造句子。寧可普通、口語、生活化，也不要奇怪或做作。\n"
+        "6. 不要只是把同一句話換幾個字；16 句應該來自不同的日常對話時刻。\n"
+        "7. 不要寫需要特定畫面才能理解的台詞。例如『拜託不要再切了』這類必須先知道有人正在做某個動作的句子，除非它本身就是很常見的日常回覆。\n"
+        "8. 不要寫節慶標語、祝福語、口號或主題介紹，除非使用者的主題本身就是要做這類文字。\n"
+        "9. 可以出現很普通的話；『自然好用』比『看起來有梗』重要。\n"
+        "10. 以台灣繁體中文的自然口語為主，避免生硬書面語。\n\n"
+        "字數沒有硬性限制，以一句聊天訊息能自然傳出去為準；通常短句優先，但不要為了短而變得不自然。\n\n"
+        "最後請只輸出 16 句文字的 JSON，不要輸出編號、引號、emoji、括號、說明或分析。"
         + avoid_block
     )
 
@@ -2134,17 +2147,23 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
         model=V12_AI_COPY_MODEL,
         input=[
             {"role": "developer", "content": prompt},
-            {"role": "user", "content": f"主題：{topic}\n請給我 16 句自然、生活化、像真人聊天會說的貼圖文字。"},
+            {
+                "role": "user",
+                "content": (
+                    f"主題：{topic}\n"
+                    "請提供 16 句自然、簡短、生活化、可以直接拿來回 LINE 訊息的貼圖文字。"
+                ),
+            },
         ],
         text={
             "format": {
                 "type": "json_schema",
-                "name": "line_sticker_copy_natural",
+                "name": "line_sticker_copy_dialogue",
                 "strict": True,
                 "schema": schema,
             }
         },
-        max_output_tokens=1400,
+        max_output_tokens=1800,
     )
 
     raw = str(response.output_text or "").strip()
@@ -2158,7 +2177,7 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
 
 
 def _v12_render_ai_copy_assistant(api_mode, user_api_key):
-    """V12｜AI 自然口語文案助手＋多主題暫存池（Session-only）。
+    """V12｜AI 自然對話文案助手＋多主題暫存池（Session-only）。
     規則：主題只在使用者完成 AI 生成並選擇儲存文案後建立；
     每次 AI 產生 16 句，使用者可只勾選想保存的句子；
     每個主題最多 30 句；本次創作最多同時使用 3 個已建立主題；
@@ -2237,7 +2256,7 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     if _candidates:
         _used_topic = str(st.session_state.get("v12_ai_copy_topic_used", "") or "").strip()
         st.markdown("#### 🆕 本次 AI 生成結果")
-        st.caption(f"主題：{_used_topic}　｜　AI 自然判斷日常情境與口語表達　｜　請勾選想保存的文案")
+        st.caption(f"主題：{_used_topic}　｜　以日常對話、自然回覆為核心　｜　請勾選想保存的文案")
 
         _gen_selected = st.session_state.get("v12_ai_copy_selected", [])
         if not isinstance(_gen_selected, list):
