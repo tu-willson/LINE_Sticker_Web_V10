@@ -2067,7 +2067,7 @@ def base_boxes(w, h):
     return boxes
 
 # ============================================================
-# V12｜AI 貼圖文案助手 V1
+# V12｜AI 貼圖文案自由創作測試版 V1
 # - 使用 Responses API 進行「主題 → 情境延伸 → 16 句候選文案」
 # - 與 gpt-image-2 圖片生成分開，不改動原本圖片生成流程
 # - AI 文案助手測試階段：暫時不扣網站每日 AI 額度，開放不限次數
@@ -2075,19 +2075,8 @@ def base_boxes(w, h):
 # - 後續可再獨立加入「5 分鐘冷卻」限制，不與圖片生成額度綁定
 # ============================================================
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
-V12_AI_COPY_TONES = [
-    "😂 搞笑自然",
-    "😤 憤憤不平",
-    "😈 嘲諷吐槽",
-    "☁️ 委屈可愛",
-    "👑 霸氣有梗",
-    "💬 台灣口語",
-    "✨ 溫暖療癒",
-]
-
-def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
+def _v12_ai_copy_generate(topic, api_mode, user_api_key):
     topic = str(topic or "").strip()
-    tone = str(tone or "").strip()
     if not topic:
         raise ValueError("missing_topic")
 
@@ -2117,20 +2106,24 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
     system_prompt = (
         "你是一位非常懂 LINE 貼圖的中文文案企劃。"
         "你的任務不是寫文章，而是把使用者提供的一個主題，"
-        "延伸成日常聊天中真的會用到的貼圖情境，再寫出短、自然、有畫面感的貼圖文字。"
-        "請先在內部完成主題拆解與情境分布，但不要輸出你的分析過程；只輸出最後的 16 句候選文案。"
-        "16 句要有明顯不同的使用情境，例如：反應、吐槽、拒絕、驚訝、無奈、催促、開心、崩潰等，"
-        "不要只是同一句話換同義詞。"
+        "自由延伸成日常聊天中真的會用到的貼圖情境，再寫出短、自然、有畫面感、讓人想使用的貼圖文字。"
+        "不要讓使用者預先指定情緒或語氣；請你自己判斷這個主題最適合的情緒、語氣、笑點與使用時機。"
+        "請在內部先完成主題理解、情境挖掘、情緒探索與創意發想，不要輸出分析過程；只輸出最後的 16 句候選文案。"
+        "先在內部大量發想，再自行扮演觀眾與 LINE 貼圖編輯，淘汰普通、老套、空泛、難以使用、只是換同義詞、或笑點重複的句子。"
+        "16 句必須來自明顯不同的生活情境或笑點角度，不要只是把同一種情緒換句話說。"
+        "如果某種情緒不適合這個主題，不要為了湊數硬塞；優先追求自然、好笑、有共鳴、好用。"
         "每句以 2～8 個中文字為優先，最多 10 個中文字；要像 LINE 對話，不要像標語、文章或解釋。"
-        "避免重複、避免過度正式、避免罕見書面語。"
-        "若主題帶有職業、身份或場景，請自然延伸該領域常見的生活情境。"
+        "避免『好累』『好煩』『又來了』『受不了』這類沒有主題特色的普通句子，除非你把它改造成具有具體情境或獨特笑點的表達。"
+        "若主題帶有職業、身份或場景，請自然延伸該領域常見的真實生活情境與內行人才懂的細節。"
+        "每一句都做一次『朋友轉傳測試』：如果朋友看到這句，會不會覺得『這句就是在講我』而想拿來傳給別人？不符合就淘汰。"
+        "每一句都做一次『貼圖測試』：不需要解釋就看得懂，而且真的能在聊天中當反應使用。不符合就淘汰。"
         "不要加入編號、引號、emoji 或括號。"
     )
     user_prompt = (
-        f"使用者主題：{topic}\n"
-        f"希望的語氣方向：{tone}\n\n"
+        f"使用者主題：{topic}\n\n"
         "請產生 16 句可直接拿來做 LINE 貼圖的候選文字。"
-        "請讓 16 句涵蓋不同情緒與情境，並保持同一主題世界觀。"
+        "不要先問我想要什麼感覺；請你自己判斷最適合的表現方式。"
+        "請優先尋找這個主題獨有的生活情境、反差、荒謬感、共鳴點或吐槽角度，並保持同一主題世界觀。"
     )
 
     # 文案助手測試階段不扣網站額度，因此本次不需要 quota claim / refund。
@@ -2180,7 +2173,6 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     st.session_state.setdefault("v12_ai_copy_selected", [])
     st.session_state.setdefault("v12_ai_copy_topic", "")
     st.session_state.setdefault("v12_ai_copy_topic_used", "")
-    st.session_state.setdefault("v12_ai_copy_tone_used", "")
 
     # ------------------------------------------------------------
     # ① 主題：這裡只是「創作輸入」，不會因為打字就自動建立主題。
@@ -2200,15 +2192,6 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
         # 主題改變時，舊一批 16 句的 checkbox 狀態也一併清除。
         for _i in range(16):
             st.session_state.pop(f"v12_ai_copy_pick_{_i}", None)
-
-    # ------------------------------------------------------------
-    # ② 文案語氣
-    # ------------------------------------------------------------
-    _tone = st.selectbox(
-        "🎭 希望文案是什麼感覺？",
-        V12_AI_COPY_TONES,
-        key="v12_ai_copy_tone",
-    )
 
     _generate = st.button(
         "✨ AI 幫我想 16 句",
@@ -2235,11 +2218,10 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                 else:
                     with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
                         _phrases = _v12_ai_copy_generate(
-                            _topic, _tone, _live_api_mode, _live_user_api_key
+                            _topic, _live_api_mode, _live_user_api_key
                         )
                     st.session_state["v12_ai_copy_candidates"] = _phrases
                     st.session_state["v12_ai_copy_topic_used"] = _topic
-                    st.session_state["v12_ai_copy_tone_used"] = _tone
                     st.session_state["v12_ai_copy_selected"] = []
                     for _i in range(16):
                         st.session_state[f"v12_ai_copy_pick_{_i}"] = False
@@ -2254,9 +2236,8 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
     _candidates = list(st.session_state.get("v12_ai_copy_candidates") or [])
     if _candidates:
         _used_topic = str(st.session_state.get("v12_ai_copy_topic_used", "") or "").strip()
-        _used_tone = st.session_state.get("v12_ai_copy_tone_used", _tone)
         st.markdown("#### 🆕 本次 AI 生成結果")
-        st.caption(f"主題：{_used_topic}　｜　語氣：{_used_tone}　｜　請勾選想保存的文案")
+        st.caption(f"主題：{_used_topic}　｜　AI 自動判斷情緒、語氣與情境　｜　請勾選想保存的文案")
 
         _gen_selected = st.session_state.get("v12_ai_copy_selected", [])
         if not isinstance(_gen_selected, list):
