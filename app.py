@@ -2154,7 +2154,7 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
                     "schema": schema,
                 }
             },
-            max_output_tokens=900,
+            max_output_tokens=1800,
         )
         raw = str(response.output_text or "").strip()
         data = json.loads(raw)
@@ -2236,8 +2236,10 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                         st.session_state[f"v12_ai_copy_pick_{_i}"] = False
             except RuntimeError:
                 st.error("❌ AI 文案服務目前無法使用，請稍後再試。")
-            except Exception:
+            except Exception as _e:
+                # 測試版顯示簡短錯誤原因，方便定位 API / JSON / 輸出長度問題。
                 st.error("❌ AI 文案產生失敗，請稍後再試。")
+                st.caption(f"測試資訊：{type(_e).__name__} — {str(_e)[:220]}")
 
     # ------------------------------------------------------------
     # ③ 本次 AI 生成結果：只勾選想保存的，不自動建立主題或全部進池。
