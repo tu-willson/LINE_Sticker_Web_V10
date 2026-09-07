@@ -2075,13 +2075,11 @@ def base_boxes(w, h):
 # - 後續可再獨立加入「5 分鐘冷卻」限制，不與圖片生成額度綁定
 # ============================================================
 V12_AI_COPY_MODEL = "gpt-5.6-luna"
-def _v12_ai_copy_generate(topic, api_mode, user_api_key):
+def _v12_ai_copy_generate(topic, api_mode, user_api_key, avoid_phrases=None):
     topic = str(topic or "").strip()
     if not topic:
         raise ValueError("missing_topic")
 
-    # AI 文案助手目前是獨立測試功能：
-    # 暫時不使用網站每日 10 次 AI 額度，避免與圖片生成共用額度。
     if api_mode == "🔑 使用自己的 OpenAI API":
         if not user_api_key:
             raise ValueError("missing_user_api_key")
@@ -2103,31 +2101,44 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key):
         "additionalProperties": False,
     }
 
+    # V2 核心：不是「想到 16 句」，而是先像脫口秀編劇大量發想，
+    # 再像觀眾與貼圖編輯一樣逐句淘汰。最終只交付 16 句。
     system_prompt = (
-        "你是一位非常懂 LINE 貼圖的中文文案企劃。"
-        "你的任務不是寫文章，而是把使用者提供的一個主題，"
-        "自由延伸成日常聊天中真的會用到的貼圖情境，再寫出短、自然、有畫面感、讓人想使用的貼圖文字。"
-        "不要讓使用者預先指定情緒或語氣；請你自己判斷這個主題最適合的情緒、語氣、笑點與使用時機。"
-        "請在內部先完成主題理解、情境挖掘、情緒探索與創意發想，不要輸出分析過程；只輸出最後的 16 句候選文案。"
-        "先在內部大量發想，再自行扮演觀眾與 LINE 貼圖編輯，淘汰普通、老套、空泛、難以使用、只是換同義詞、或笑點重複的句子。"
-        "16 句必須來自明顯不同的生活情境或笑點角度，不要只是把同一種情緒換句話說。"
-        "如果某種情緒不適合這個主題，不要為了湊數硬塞；優先追求自然、好笑、有共鳴、好用。"
-        "每句以 2～8 個中文字為優先，最多 10 個中文字；要像 LINE 對話，不要像標語、文章或解釋。"
-        "避免『好累』『好煩』『又來了』『受不了』這類沒有主題特色的普通句子，除非你把它改造成具有具體情境或獨特笑點的表達。"
-        "若主題帶有職業、身份或場景，請自然延伸該領域常見的真實生活情境與內行人才懂的細節。"
-        "每一句都做一次『朋友轉傳測試』：如果朋友看到這句，會不會覺得『這句就是在講我』而想拿來傳給別人？不符合就淘汰。"
-        "每一句都做一次『貼圖測試』：不需要解釋就看得懂，而且真的能在聊天中當反應使用。不符合就淘汰。"
-        "不要加入編號、引號、emoji 或括號。"
-    )
-    user_prompt = (
-        f"使用者主題：{topic}\n\n"
-        "請產生 16 句可直接拿來做 LINE 貼圖的候選文字。"
-        "不要先問我想要什麼感覺；請你自己判斷最適合的表現方式。"
-        "請優先尋找這個主題獨有的生活情境、反差、荒謬感、共鳴點或吐槽角度，並保持同一主題世界觀。"
+        "你是 LINE 貼圖的資深文案總監，同時扮演三個角色：脫口秀編劇、真實觀眾、貼圖編輯。"
+        "使用者只給你一個主題，你不能要求使用者先指定情緒；你要自己找出這個主題最有趣、最真實、最值得拿來聊天的切入點。"
+        "重要：你不是在介紹主題，也不是列出與主題有關的名詞；你是在模擬一個人身處這個主題情境時，會忍不住脫口而出的那一句話。"
+        "先在內部把主題拆成多個真實生活場景、人物反應、尷尬點、荒謬點、反差、抱怨、期待、失望、自嘲、吐槽與意外瞬間。"
+        "再在內部一次大量創作至少 50 個候選，故意嘗試不同笑點與使用時機；不要把這些內部候選輸出。"
+        "接著扮演觀眾逐句審查：看到這句是否會有『哈哈這就是我』、『太真實了』、『這句可以直接傳出去』的感覺？"
+        "再扮演 LINE 貼圖編輯逐句審查：是否短、自然、有畫面、看一眼就懂、可以直接當聊天反應，而且比普通口語更有記憶點？"
+        "淘汰以下類型：只是描述主題、節慶常識、活動清單、食物清單、漂亮但空泛的句子、老套網路語、單純換同義詞、同一笑點換說法、必須搭配圖片才看得懂、像文章或標語。"
+        "特別避免把『中秋』寫成月餅／烤肉／月亮的資料整理；如果主題是節日，要優先寫『人在節日裡真正會說的話』。"
+        "特別避免把『碎碎念』理解成很多小事羅列；要把它理解成有個性、有情緒、有反差的生活吐槽或心聲。"
+        "每句以 2～8 個中文字為優先，最多 10 個中文字；口語自然，可以有台灣聊天感，但不要刻意塞台語或網路流行語。"
+        "16 句必須有明顯不同的使用時機與笑點來源；不要為了湊滿 16 句而降低品質。"
+        "如果某一句單獨拿出來，放到十個不同主題都成立，就代表太泛，應淘汰或重寫。"
+        "不要加入編號、引號、emoji、括號或解釋，只輸出最後 16 句。"
     )
 
-    # 文案助手測試階段不扣網站額度，因此本次不需要 quota claim / refund。
-    quota_claimed = False
+    _avoid = [str(x).strip() for x in (avoid_phrases or []) if str(x).strip()]
+    _avoid = list(dict.fromkeys(_avoid))[:32]
+    avoid_block = ""
+    if _avoid:
+        avoid_block = (
+            "\n\n以下是上一輪已經出現過的文案。這次不只不能重複字面，"
+            "連同一個笑點、同一個情境、同一種表達方式都要盡量避開，請換新的角度：\n"
+            + "、".join(_avoid)
+        )
+
+    user_prompt = (
+        f"使用者主題：{topic}\n\n"
+        "請交付最終 16 句 LINE 貼圖文案。"
+        "先在內部大量發想與審稿，不要輸出分析過程。"
+        "優先找『只有這個主題才會出現』的真實生活瞬間，讓每句都有可想像的使用畫面。"
+        "最終結果寧可犀利、生活化、帶一點意外，也不要安全但普通。"
+        + avoid_block
+    )
+
     try:
         response = _copy_client.responses.create(
             model=V12_AI_COPY_MODEL,
@@ -2143,20 +2154,17 @@ def _v12_ai_copy_generate(topic, api_mode, user_api_key):
                     "schema": schema,
                 }
             },
-            max_output_tokens=700,
+            max_output_tokens=900,
         )
         raw = str(response.output_text or "").strip()
         data = json.loads(raw)
         phrases = data.get("phrases", []) if isinstance(data, dict) else []
         phrases = [str(x).strip() for x in phrases if str(x).strip()]
-        # 去除完全重複，但不足 16 句就視為本次失敗，避免半成品污染 UI。
         phrases = list(dict.fromkeys(phrases))
         if len(phrases) != 16:
             raise ValueError("invalid_phrase_count")
         return phrases
     except Exception:
-        if quota_claimed:
-            _refund_daily_ai_quota()
         raise
 
 
@@ -2217,8 +2225,9 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                     st.error("❌ 請先輸入自己的 OpenAI API Key。")
                 else:
                     with st.spinner("🤖 AI 正在延伸主題與生活情境……"):
+                        _previous_phrases = list(st.session_state.get("v12_ai_copy_candidates") or [])
                         _phrases = _v12_ai_copy_generate(
-                            _topic, _live_api_mode, _live_user_api_key
+                            _topic, _live_api_mode, _live_user_api_key, _previous_phrases
                         )
                     st.session_state["v12_ai_copy_candidates"] = _phrases
                     st.session_state["v12_ai_copy_topic_used"] = _topic
