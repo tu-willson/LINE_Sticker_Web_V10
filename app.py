@@ -2229,6 +2229,9 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
     )
 
     quota_claimed = False
+    _last_error = None
+
+    # 第一層：維持原本的 Structured Output。
     try:
         response = _copy_client.responses.create(
             model=V12_AI_COPY_MODEL,
@@ -2254,10 +2257,47 @@ def _v12_ai_copy_generate(topic, tone, api_mode, user_api_key):
         if len(phrases) != 16:
             raise ValueError("invalid_phrase_count")
         return phrases
-    except Exception:
-        if quota_claimed:
-            _refund_daily_ai_quota()
-        raise
+    except Exception as _e:
+        _last_error = _e
+
+    # 第二層：若 Structured Output 在目前 API／模型環境不接受，
+    # 改用一般文字輸出。這是相容性 fallback，不改變 V7 的文案邏輯。
+    try:
+        _fallback_prompt = (
+            user_prompt
+            + "\n\n請只輸出 16 行文案，每行一句。"
+            + "不要編號、不要項目符號、不要引號、不要解釋。"
+        )
+        response = _copy_client.responses.create(
+            model=V12_AI_COPY_MODEL,
+            input=[
+                {"role": "developer", "content": system_prompt},
+                {"role": "user", "content": _fallback_prompt},
+            ],
+            max_output_tokens=1600,
+        )
+        raw = str(response.output_text or "").strip()
+        phrases = []
+        for _line in raw.splitlines():
+            _line = re.sub(r"^\s*(?:\d{1,2}[\.、:：)]|[-*•])\s*", "", _line).strip()
+            _line = _line.strip("「」『』\"' ")
+            if _line:
+                phrases.append(_line)
+        phrases = list(dict.fromkeys(phrases))
+        if len(phrases) >= 16:
+            return phrases[:16]
+        raise ValueError("fallback_invalid_phrase_count")
+    except Exception as _e2:
+        _last_error = _e2
+
+    if quota_claimed:
+        _refund_daily_ai_quota()
+
+    # 不再把真正錯誤吞掉，讓 UI 能顯示實際原因，方便定位。
+    raise RuntimeError(
+        f"AI_COPY_FAILED | model={V12_AI_COPY_MODEL} | "
+        f"primary={type(_last_error).__name__}: {_last_error}"
+    )
 
 
 def _v12_render_ai_copy_assistant(api_mode, user_api_key):
@@ -2338,8 +2378,9 @@ def _v12_render_ai_copy_assistant(api_mode, user_api_key):
                         st.session_state[f"v12_ai_copy_pick_{_i}"] = False
             except RuntimeError:
                 st.error("❌ AI 文案服務目前無法使用，請稍後再試。")
-            except Exception:
-                st.error("❌ AI 文案產生失敗，請稍後再試。")
+            except Exception as _e:
+                st.error("❌ AI 文案產生失敗。")
+                st.caption(f"錯誤資訊：{_e}")
 
     # ------------------------------------------------------------
     # ③ 本次 AI 生成結果：只勾選想保存的，不自動建立主題或全部進池。
